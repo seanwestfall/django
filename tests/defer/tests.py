@@ -3,7 +3,9 @@ from __future__ import unicode_literals
 from django.db.models.query_utils import DeferredAttribute, InvalidQuery
 from django.test import TestCase
 
-from .models import Secondary, Primary, Child, BigChild, ChildProxy, RefreshPrimaryProxy
+from .models import (
+    BigChild, Child, ChildProxy, Primary, RefreshPrimaryProxy, Secondary,
+)
 
 
 class AssertionMixin(object):
@@ -109,13 +111,13 @@ class DeferTests(AssertionMixin, TestCase):
         self.assertEqual(obj.related_id, self.s1.pk)
         self.assertEqual(obj.name, "p1")
 
-    def test_defer_selected_related_raises_invalid_query(self):
+    def test_defer_select_related_raises_invalid_query(self):
         # When we defer a field and also select_related it, the query is
         # invalid and raises an exception.
         with self.assertRaises(InvalidQuery):
             Primary.objects.defer("related").select_related("related")[0]
 
-    def test_only_selected_related_raises_invalid_query(self):
+    def test_only_select_related_raises_invalid_query(self):
         with self.assertRaises(InvalidQuery):
             Primary.objects.only("name").select_related("related")[0]
 

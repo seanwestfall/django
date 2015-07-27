@@ -1,8 +1,7 @@
-from django.conf.urls import url, include
+from django.conf.urls import include, url
 from django.views.generic import RedirectView
 
 from . import views
-
 
 urlpatterns = [
     url(r'', include('test_client.urls')),
@@ -31,6 +30,7 @@ urlpatterns = [
     url(r'^request_methods/$', views.request_methods_view),
     url(r'^check_unicode/$', views.return_unicode),
     url(r'^check_binary/$', views.return_undecodable_binary),
+    url(r'^json_response/$', views.return_json_response),
     url(r'^parse_unicode_json/$', views.return_json_file),
     url(r'^check_headers/$', views.check_headers),
     url(r'^check_headers_redirect/$', RedirectView.as_view(url='/check_headers/')),

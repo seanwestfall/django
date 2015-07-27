@@ -1,16 +1,17 @@
 import imp
-from importlib import import_module
 import os
 import sys
 import unittest
+from importlib import import_module
 from zipimport import zipimporter
 
 from django.test import SimpleTestCase, modify_settings
 from django.test.utils import extend_sys_path
 from django.utils import six
-from django.utils.module_loading import (autodiscover_modules, import_string,
-                                         module_has_submodule)
 from django.utils._os import upath
+from django.utils.module_loading import (
+    autodiscover_modules, import_string, module_has_submodule,
+)
 
 
 class DefaultLoader(unittest.TestCase):
@@ -114,7 +115,9 @@ class ModuleImportTestCase(unittest.TestCase):
 
         # Test exceptions raised
         self.assertRaises(ImportError, import_string, 'no_dots_in_path')
-        self.assertRaises(ImportError, import_string, 'utils_tests.unexistent')
+        msg = 'Module "utils_tests" does not define a "unexistent" attribute'
+        with six.assertRaisesRegex(self, ImportError, msg):
+            import_string('utils_tests.unexistent')
 
 
 @modify_settings(INSTALLED_APPS={'append': 'utils_tests.test_module'})

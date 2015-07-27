@@ -12,12 +12,9 @@ from django.conf import settings
 from django.core import signals
 from django.core.handlers import base
 from django.core.urlresolvers import set_script_prefix
+from django.utils import six
 from django.utils.encoding import force_str, force_text
 from django.utils.functional import cached_property
-from django.utils import six
-
-# For backwards compatibility -- lots of code uses this in the wild!
-from django.http.response import REASON_PHRASES as STATUS_CODE_TEXT  # NOQA
 
 logger = logging.getLogger('django.request')
 
@@ -222,7 +219,7 @@ def get_script_name(environ):
 
     if script_url:
         path_info = get_bytes_from_wsgi(environ, 'PATH_INFO', '')
-        script_name = script_url[:-len(path_info)]
+        script_name = script_url[:-len(path_info)] if path_info else script_url
     else:
         script_name = get_bytes_from_wsgi(environ, 'SCRIPT_NAME', '')
 

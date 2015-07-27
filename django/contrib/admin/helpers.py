@@ -3,22 +3,23 @@ from __future__ import unicode_literals
 import warnings
 
 from django import forms
-from django.contrib.admin.utils import (flatten_fieldsets, lookup_field,
-    display_for_field, label_for_field, help_text_for_field)
+from django.conf import settings
 from django.contrib.admin.templatetags.admin_static import static
+from django.contrib.admin.utils import (
+    display_for_field, flatten_fieldsets, help_text_for_field, label_for_field,
+    lookup_field,
+)
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.fields.related import ManyToManyRel
 from django.forms.utils import flatatt
 from django.template.defaultfilters import capfirst, linebreaksbr
-from django.utils.deprecation import RemovedInDjango20Warning
+from django.utils import six
+from django.utils.deprecation import RemovedInDjango110Warning
 from django.utils.encoding import force_text, smart_text
 from django.utils.functional import cached_property
 from django.utils.html import conditional_escape, format_html
 from django.utils.safestring import mark_safe
-from django.utils import six
 from django.utils.translation import ugettext_lazy as _
-from django.conf import settings
-
 
 ACTION_CHECKBOX_NAME = '_selected_action'
 
@@ -73,7 +74,7 @@ class Fieldset(object):
     def _media(self):
         if 'collapse' in self.classes:
             extra = '' if settings.DEBUG else '.min'
-            js = ['jquery%s.js' % extra,
+            js = ['vendor/jquery/jquery%s.js' % extra,
                   'jquery.init.js',
                   'collapse%s.js' % extra]
             return forms.Media(js=[static('admin/js/%s' % url) for url in js])
@@ -120,6 +121,7 @@ class AdminField(object):
         self.field = form[field]  # A django.forms.BoundField instance
         self.is_first = is_first  # Whether this field is first on the line
         self.is_checkbox = isinstance(self.field.field.widget, forms.CheckboxInput)
+        self.is_readonly = False
 
     def label_tag(self):
         classes = []
@@ -172,6 +174,7 @@ class AdminReadonlyField(object):
         self.is_first = is_first
         self.is_checkbox = False
         self.is_readonly = True
+        self.empty_value_display = model_admin.get_empty_value_display()
 
     def label_tag(self):
         attrs = {}
@@ -184,12 +187,11 @@ class AdminReadonlyField(object):
 
     def contents(self):
         from django.contrib.admin.templatetags.admin_list import _boolean_icon
-        from django.contrib.admin.views.main import EMPTY_CHANGELIST_VALUE
         field, obj, model_admin = self.field['field'], self.form.instance, self.model_admin
         try:
             f, attr, value = lookup_field(field, obj, model_admin)
         except (AttributeError, ValueError, ObjectDoesNotExist):
-            result_repr = EMPTY_CHANGELIST_VALUE
+            result_repr = self.empty_value_display
         else:
             if f is None:
                 boolean = getattr(attr, "boolean", False)
@@ -202,10 +204,10 @@ class AdminReadonlyField(object):
                     else:
                         result_repr = linebreaksbr(result_repr)
             else:
-                if isinstance(f.rel, ManyToManyRel) and value is not None:
+                if isinstance(f.remote_field, ManyToManyRel) and value is not None:
                     result_repr = ", ".join(map(six.text_type, value.all()))
                 else:
-                    result_repr = display_for_field(value, f)
+                    result_repr = display_for_field(value, f, self.empty_value_display)
         return conditional_escape(result_repr)
 
 
@@ -283,9 +285,9 @@ class InlineAdminForm(AdminForm):
     def original_content_type_id(self):
         warnings.warn(
             'InlineAdminForm.original_content_type_id is deprecated and will be '
-            'removed in Django 2.0. If you were using this attribute to construct '
+            'removed in Django 1.10. If you were using this attribute to construct '
             'the "view on site" URL, use the `absolute_url` attribute instead.',
-            RemovedInDjango20Warning, stacklevel=2
+            RemovedInDjango110Warning, stacklevel=2
         )
         if self.original is not None:
             # Since this module gets imported in the application's root package,
@@ -309,18 +311,6 @@ class InlineAdminForm(AdminForm):
             if parent._meta.has_auto_field:
                 return True
         return False
-
-    def field_count(self):
-        # tabular.html uses this function for colspan value.
-        num_of_fields = 0
-        if self.has_auto_field():
-            num_of_fields += 1
-        num_of_fields += len(self.fieldsets[0][1]["fields"])
-        if self.formset.can_order:
-            num_of_fields += 1
-        if self.formset.can_delete:
-            num_of_fields += 1
-        return num_of_fields
 
     def pk_field(self):
         return AdminField(self.form, self.formset._pk_field.name, False)
@@ -363,8 +353,8 @@ class AdminErrorList(forms.utils.ErrorList):
         super(AdminErrorList, self).__init__()
 
         if form.is_bound:
-            self.extend(list(six.itervalues(form.errors)))
+            self.extend(form.errors.values())
             for inline_formset in inline_formsets:
                 self.extend(inline_formset.non_form_errors())
                 for errors_in_inline_form in inline_formset.errors:
-                    self.extend(list(six.itervalues(errors_in_inline_form)))
+                    self.extend(errors_in_inline_form.values())

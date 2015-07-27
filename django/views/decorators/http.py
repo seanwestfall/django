@@ -6,10 +6,14 @@ import logging
 from calendar import timegm
 from functools import wraps
 
-from django.utils.decorators import decorator_from_middleware, available_attrs
-from django.utils.http import http_date, parse_http_date_safe, parse_etags, quote_etag
+from django.http import (
+    HttpResponse, HttpResponseNotAllowed, HttpResponseNotModified,
+)
 from django.middleware.http import ConditionalGetMiddleware
-from django.http import HttpResponseNotAllowed, HttpResponseNotModified, HttpResponse
+from django.utils.decorators import available_attrs, decorator_from_middleware
+from django.utils.http import (
+    http_date, parse_etags, parse_http_date_safe, quote_etag,
+)
 
 conditional_page = decorator_from_middleware(ConditionalGetMiddleware)
 
@@ -43,13 +47,13 @@ def require_http_methods(request_method_list):
     return decorator
 
 require_GET = require_http_methods(["GET"])
-require_GET.__doc__ = "Decorator to require that a view only accept the GET method."
+require_GET.__doc__ = "Decorator to require that a view only accepts the GET method."
 
 require_POST = require_http_methods(["POST"])
-require_POST.__doc__ = "Decorator to require that a view only accept the POST method."
+require_POST.__doc__ = "Decorator to require that a view only accepts the POST method."
 
 require_safe = require_http_methods(["GET", "HEAD"])
-require_safe.__doc__ = "Decorator to require that a view only accept safe methods: GET and HEAD."
+require_safe.__doc__ = "Decorator to require that a view only accepts safe methods: GET and HEAD."
 
 
 def _precondition_failed(request):

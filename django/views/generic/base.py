@@ -5,10 +5,10 @@ from functools import update_wrapper
 
 from django import http
 from django.core.exceptions import ImproperlyConfigured
-from django.core.urlresolvers import reverse, NoReverseMatch
+from django.core.urlresolvers import NoReverseMatch, reverse
 from django.template.response import TemplateResponse
-from django.utils.decorators import classonlymethod
 from django.utils import six
+from django.utils.decorators import classonlymethod
 
 logger = logging.getLogger('django.request')
 
@@ -114,6 +114,7 @@ class TemplateResponseMixin(object):
     A mixin that can be used to render a template.
     """
     template_name = None
+    template_engine = None
     response_class = TemplateResponse
     content_type = None
 
@@ -130,6 +131,7 @@ class TemplateResponseMixin(object):
             request=self.request,
             template=self.get_template_names(),
             context=context,
+            using=self.template_engine,
             **response_kwargs
         )
 

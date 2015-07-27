@@ -2,14 +2,12 @@ import hashlib
 import logging
 import re
 
-from django.conf import settings
-from django.core.mail import mail_managers
-from django.core import urlresolvers
 from django import http
+from django.conf import settings
+from django.core import urlresolvers
+from django.core.exceptions import PermissionDenied
+from django.core.mail import mail_managers
 from django.utils.encoding import force_text
-from django.utils.http import urlquote
-from django.utils import six
-
 
 logger = logging.getLogger('django.request')
 
@@ -50,18 +48,12 @@ class CommonMiddleware(object):
         if 'HTTP_USER_AGENT' in request.META:
             for user_agent_regex in settings.DISALLOWED_USER_AGENTS:
                 if user_agent_regex.search(request.META['HTTP_USER_AGENT']):
-                    logger.warning('Forbidden (User agent): %s', request.path,
-                        extra={
-                            'status_code': 403,
-                            'request': request
-                        }
-                    )
-                    return http.HttpResponseForbidden('<h1>Forbidden</h1>')
+                    raise PermissionDenied('Forbidden user agent')
 
         # Check for a redirect based on settings.APPEND_SLASH
         # and settings.PREPEND_WWW
         host = request.get_host()
-        old_url = [host, request.path]
+        old_url = [host, request.get_full_path()]
         new_url = old_url[:]
 
         if (settings.PREPEND_WWW and old_url[0] and
@@ -74,37 +66,25 @@ class CommonMiddleware(object):
             urlconf = getattr(request, 'urlconf', None)
             if (not urlresolvers.is_valid_path(request.path_info, urlconf) and
                     urlresolvers.is_valid_path("%s/" % request.path_info, urlconf)):
-                new_url[1] = new_url[1] + '/'
-                if settings.DEBUG and request.method == 'POST':
+                new_url[1] = request.get_full_path(force_append_slash=True)
+                if settings.DEBUG and request.method in ('POST', 'PUT', 'PATCH'):
                     raise RuntimeError((""
-                    "You called this URL via POST, but the URL doesn't end "
+                    "You called this URL via %(method)s, but the URL doesn't end "
                     "in a slash and you have APPEND_SLASH set. Django can't "
-                    "redirect to the slash URL while maintaining POST data. "
-                    "Change your form to point to %s%s (note the trailing "
+                    "redirect to the slash URL while maintaining %(method)s data. "
+                    "Change your form to point to %(url)s (note the trailing "
                     "slash), or set APPEND_SLASH=False in your Django "
-                    "settings.") % (new_url[0], new_url[1]))
+                    "settings.") % {'method': request.method, 'url': ''.join(new_url)})
 
         if new_url == old_url:
             # No redirects required.
             return
-        if new_url[0]:
+        if new_url[0] != old_url[0]:
             newurl = "%s://%s%s" % (
                 request.scheme,
-                new_url[0], urlquote(new_url[1]))
+                new_url[0], new_url[1])
         else:
-            newurl = urlquote(new_url[1])
-        if request.META.get('QUERY_STRING', ''):
-            if six.PY3:
-                newurl += '?' + request.META['QUERY_STRING']
-            else:
-                # `query_string` is a bytestring. Appending it to the unicode
-                # string `newurl` will fail if it isn't ASCII-only. This isn't
-                # allowed; only broken software generates such query strings.
-                # Better drop the invalid query string than crash (#15152).
-                try:
-                    newurl += '?' + request.META['QUERY_STRING'].decode()
-                except UnicodeDecodeError:
-                    pass
+            newurl = new_url[1]
         return self.response_redirect_class(newurl)
 
     def process_response(self, request, response):
@@ -142,7 +122,7 @@ class BrokenLinkEmailsMiddleware(object):
             referer = force_text(request.META.get('HTTP_REFERER', ''), errors='replace')
 
             if not self.is_ignorable_request(request, path, domain, referer):
-                ua = request.META.get('HTTP_USER_AGENT', '<none>')
+                ua = force_text(request.META.get('HTTP_USER_AGENT', '<none>'), errors='replace')
                 ip = request.META.get('REMOTE_ADDR', '<none>')
                 mail_managers(
                     "Broken %slink on %s" % (

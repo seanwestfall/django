@@ -6,18 +6,20 @@ for convenience's sake.
 
 import warnings
 
-from django.template import loader, RequestContext
-from django.template.context import _current_app_undefined
-from django.template.engine import (
-    _context_instance_undefined, _dictionary_undefined, _dirs_undefined)
-from django.http import HttpResponse, Http404
-from django.http import HttpResponseRedirect, HttpResponsePermanentRedirect
+from django.core import urlresolvers
 from django.db.models.base import ModelBase
 from django.db.models.manager import Manager
 from django.db.models.query import QuerySet
-from django.core import urlresolvers
+from django.http import (
+    Http404, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect,
+)
+from django.template import RequestContext, loader
+from django.template.context import _current_app_undefined
+from django.template.engine import (
+    _context_instance_undefined, _dictionary_undefined, _dirs_undefined,
+)
 from django.utils import six
-from django.utils.deprecation import RemovedInDjango20Warning
+from django.utils.deprecation import RemovedInDjango110Warning
 from django.utils.encoding import force_text
 from django.utils.functional import Promise
 
@@ -25,7 +27,7 @@ from django.utils.functional import Promise
 def render_to_response(template_name, context=None,
                        context_instance=_context_instance_undefined,
                        content_type=None, status=None, dirs=_dirs_undefined,
-                       dictionary=_dictionary_undefined):
+                       dictionary=_dictionary_undefined, using=None):
     """
     Returns a HttpResponse whose content is filled with the result of calling
     django.template.loader.render_to_string() with the passed arguments.
@@ -34,12 +36,13 @@ def render_to_response(template_name, context=None,
             and dirs is _dirs_undefined
             and dictionary is _dictionary_undefined):
         # No deprecated arguments were passed - use the new code path
-        content = loader.render_to_string(template_name, context)
+        content = loader.render_to_string(template_name, context, using=using)
 
     else:
         # Some deprecated arguments were passed - use the legacy code path
         content = loader.render_to_string(
-            template_name, context, context_instance, dirs, dictionary)
+            template_name, context, context_instance, dirs, dictionary,
+            using=using)
 
     return HttpResponse(content, content_type, status)
 
@@ -47,7 +50,8 @@ def render_to_response(template_name, context=None,
 def render(request, template_name, context=None,
            context_instance=_context_instance_undefined,
            content_type=None, status=None, current_app=_current_app_undefined,
-           dirs=_dirs_undefined, dictionary=_dictionary_undefined):
+           dirs=_dirs_undefined, dictionary=_dictionary_undefined,
+           using=None):
     """
     Returns a HttpResponse whose content is filled with the result of calling
     django.template.loader.render_to_string() with the passed arguments.
@@ -58,8 +62,9 @@ def render(request, template_name, context=None,
             and dirs is _dirs_undefined
             and dictionary is _dictionary_undefined):
         # No deprecated arguments were passed - use the new code path
-        # In Django 2.0, request should become a positional argument.
-        content = loader.render_to_string(template_name, context, request=request)
+        # In Django 1.10, request should become a positional argument.
+        content = loader.render_to_string(
+            template_name, context, request=request, using=using)
 
     else:
         # Some deprecated arguments were passed - use the legacy code path
@@ -73,14 +78,15 @@ def render(request, template_name, context=None,
                 warnings.warn(
                     "The current_app argument of render is deprecated. "
                     "Set the current_app attribute of request instead.",
-                    RemovedInDjango20Warning, stacklevel=2)
+                    RemovedInDjango110Warning, stacklevel=2)
                 request.current_app = current_app
                 # Directly set the private attribute to avoid triggering the
                 # warning in RequestContext.__init__.
                 context_instance._current_app = current_app
 
         content = loader.render_to_string(
-            template_name, context, context_instance, dirs, dictionary)
+            template_name, context, context_instance, dirs, dictionary,
+            using=using)
 
     return HttpResponse(content, content_type, status)
 
@@ -191,7 +197,7 @@ def resolve_url(to, *args, **kwargs):
 
     if isinstance(to, six.string_types):
         # Handle relative URLs
-        if any(to.startswith(path) for path in ('./', '../')):
+        if to.startswith(('./', '../')):
             return to
 
     # Next try a reverse URL resolution.

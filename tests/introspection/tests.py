@@ -6,7 +6,7 @@ from django.db import connection
 from django.db.utils import DatabaseError
 from django.test import TransactionTestCase, mock, skipUnlessDBFeature
 
-from .models import Reporter, Article
+from .models import Article, Reporter
 
 
 class IntrospectionTests(TransactionTestCase):
@@ -30,7 +30,7 @@ class IntrospectionTests(TransactionTestCase):
                              "django_table_names() returned a non-Django table")
 
     def test_django_table_names_retval_type(self):
-        #15216 - Table name is a list
+        # Table name is a list #15216
         tl = connection.introspection.django_table_names(only_existing=True)
         self.assertIs(type(tl), list)
         tl = connection.introspection.django_table_names(only_existing=False)

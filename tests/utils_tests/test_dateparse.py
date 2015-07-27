@@ -1,9 +1,11 @@
 from __future__ import unicode_literals
 
-from datetime import date, time, datetime, timedelta
 import unittest
+from datetime import date, datetime, time, timedelta
 
-from django.utils.dateparse import parse_date, parse_time, parse_datetime, parse_duration
+from django.utils.dateparse import (
+    parse_date, parse_datetime, parse_duration, parse_time,
+)
 from django.utils.timezone import get_fixed_timezone
 
 
@@ -49,6 +51,20 @@ class DateParseTests(unittest.TestCase):
 
 
 class DurationParseTests(unittest.TestCase):
+
+    def test_parse_python_format(self):
+        timedeltas = [
+            timedelta(days=4, minutes=15, seconds=30, milliseconds=100),  # fractions of seconds
+            timedelta(hours=10, minutes=15, seconds=30),  # hours, minutes, seconds
+            timedelta(days=4, minutes=15, seconds=30),  # multiple days
+            timedelta(days=1, minutes=00, seconds=00),  # single day
+            timedelta(days=-4, minutes=15, seconds=30),  # negative durations
+            timedelta(minutes=15, seconds=30),  # minute & seconds
+            timedelta(seconds=30),  # seconds
+        ]
+        for delta in timedeltas:
+            self.assertEqual(parse_duration(format(delta)), delta)
+
     def test_seconds(self):
         self.assertEqual(parse_duration('30'), timedelta(seconds=30))
 

@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+
 import logging
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
-from django.middleware.csrf import CsrfViewMiddleware, CSRF_KEY_LENGTH
+from django.middleware.csrf import (
+    CSRF_KEY_LENGTH, CsrfViewMiddleware, get_token,
+)
 from django.template import RequestContext, Template
 from django.template.context_processors import csrf
-from django.test import TestCase, override_settings
-from django.views.decorators.csrf import csrf_exempt, requires_csrf_token, ensure_csrf_cookie
+from django.test import SimpleTestCase, override_settings
+from django.views.decorators.csrf import (
+    csrf_exempt, ensure_csrf_cookie, requires_csrf_token,
+)
 
 
 # Response/views used for CsrfResponseMiddleware and CsrfViewMiddleware tests
@@ -51,7 +56,7 @@ class TestingHttpRequest(HttpRequest):
         return getattr(self, '_is_secure_override', False)
 
 
-class CsrfViewMiddlewareTest(TestCase):
+class CsrfViewMiddlewareTest(SimpleTestCase):
     # The csrf token is potentially from an untrusted source, so could have
     # characters that need dealing with.
     _csrf_id_cookie = b"<1>\xc2\xa1"
@@ -186,6 +191,16 @@ class CsrfViewMiddlewareTest(TestCase):
         req2 = CsrfViewMiddleware().process_view(req, post_form_view, (), {})
         self.assertIsNone(req2)
 
+    @override_settings(CSRF_HEADER_NAME='HTTP_X_CSRFTOKEN_CUSTOMIZED')
+    def test_csrf_token_in_header_with_customized_name(self):
+        """
+        settings.CSRF_HEADER_NAME can be used to customize the CSRF header name
+        """
+        req = self._get_POST_csrf_cookie_request()
+        req.META['HTTP_X_CSRFTOKEN_CUSTOMIZED'] = self._csrf_id
+        req2 = CsrfViewMiddleware().process_view(req, post_form_view, (), {})
+        self.assertIsNone(req2)
+
     def test_put_and_delete_rejected(self):
         """
         Tests that HTTP PUT and DELETE methods have protection
@@ -224,7 +239,10 @@ class CsrfViewMiddlewareTest(TestCase):
         """
         req = self._get_GET_no_csrf_cookie_request()
         resp = token_view(req)
-        self.assertEqual(resp.content, b'')
+
+        token = get_token(req)
+        self.assertIsNotNone(token)
+        self._check_token_present(resp, token)
 
     def test_token_node_empty_csrf_cookie(self):
         """
@@ -235,7 +253,9 @@ class CsrfViewMiddlewareTest(TestCase):
         CsrfViewMiddleware().process_view(req, token_view, (), {})
         resp = token_view(req)
 
-        self.assertNotEqual("", resp.content)
+        token = get_token(req)
+        self.assertIsNotNone(token)
+        self._check_token_present(resp, token)
 
     def test_token_node_with_csrf_cookie(self):
         """

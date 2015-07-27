@@ -1,13 +1,16 @@
-from itertools import takewhile
-import sys
 import os
+import sys
+from itertools import takewhile
 
 from django.apps import apps
 from django.core.management.base import BaseCommand, CommandError
 from django.db.migrations import Migration
-from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.autodetector import MigrationAutodetector
-from django.db.migrations.questioner import MigrationQuestioner, InteractiveMigrationQuestioner
+from django.db.migrations.loader import MigrationLoader
+from django.db.migrations.questioner import (
+    InteractiveMigrationQuestioner, MigrationQuestioner,
+    NonInteractiveMigrationQuestioner,
+)
 from django.db.migrations.state import ProjectState
 from django.db.migrations.writer import MigrationWriter
 from django.utils.six import iteritems
@@ -40,7 +43,7 @@ class Command(BaseCommand):
         self.dry_run = options.get('dry_run', False)
         self.merge = options.get('merge', False)
         self.empty = options.get('empty', False)
-        self.migration_name = options.get('name', None)
+        self.migration_name = options.get('name')
         self.exit_code = options.get('exit_code', False)
 
         # Make sure the app they asked for exists
@@ -91,11 +94,15 @@ class Command(BaseCommand):
         if self.merge and conflicts:
             return self.handle_merge(loader, conflicts)
 
+        if self.interactive:
+            questioner = InteractiveMigrationQuestioner(specified_apps=app_labels, dry_run=self.dry_run)
+        else:
+            questioner = NonInteractiveMigrationQuestioner(specified_apps=app_labels, dry_run=self.dry_run)
         # Set up autodetector
         autodetector = MigrationAutodetector(
             loader.project_state(),
             ProjectState.from_apps(apps),
-            InteractiveMigrationQuestioner(specified_apps=app_labels, dry_run=self.dry_run),
+            questioner,
         )
 
         # If they want to make an empty migration, make one for each app
@@ -158,7 +165,7 @@ class Command(BaseCommand):
                 if not self.dry_run:
                     # Write the migrations file to the disk.
                     migrations_directory = os.path.dirname(writer.path)
-                    if not directory_created.get(app_label, False):
+                    if not directory_created.get(app_label):
                         if not os.path.isdir(migrations_directory):
                             os.mkdir(migrations_directory)
                         init_path = os.path.join(migrations_directory, "__init__.py")
@@ -232,7 +239,18 @@ class Command(BaseCommand):
                 })
                 new_migration = subclass("%04i_merge" % (biggest_number + 1), app_label)
                 writer = MigrationWriter(new_migration)
-                with open(writer.path, "wb") as fh:
-                    fh.write(writer.as_string())
-                if self.verbosity > 0:
-                    self.stdout.write("\nCreated new merge migration %s" % writer.path)
+
+                if not self.dry_run:
+                    # Write the merge migrations file to the disk
+                    with open(writer.path, "wb") as fh:
+                        fh.write(writer.as_string())
+                    if self.verbosity > 0:
+                        self.stdout.write("\nCreated new merge migration %s" % writer.path)
+                elif self.verbosity == 3:
+                    # Alternatively, makemigrations --merge --dry-run --verbosity 3
+                    # will output the merge migrations to stdout rather than saving
+                    # the file to the disk.
+                    self.stdout.write(self.style.MIGRATE_HEADING(
+                        "Full merge migrations file '%s':" % writer.filename) + "\n"
+                    )
+                    self.stdout.write("%s\n" % writer.as_string())

@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 import logging
 import os
 import re
-from ctypes import c_char_p, c_int, CDLL, CFUNCTYPE
+from ctypes import CDLL, CFUNCTYPE, c_char_p, c_int
 from ctypes.util import find_library
 
 from django.contrib.gis.gdal.error import GDALException
@@ -66,7 +66,7 @@ def std_call(func):
     else:
         return lgdal[func]
 
-#### Version-information functions. ####
+# #### Version-information functions. ####
 
 # Returns GDAL library version information with the given key.
 _version_info = std_call('GDALVersionInfo')

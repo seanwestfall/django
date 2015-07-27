@@ -1,12 +1,11 @@
 from __future__ import unicode_literals
 
-from datetime import datetime
 import sys
 import unittest
+from datetime import datetime
 
+from django.utils import http, six
 from django.utils.datastructures import MultiValueDict
-from django.utils import http
-from django.utils import six
 
 
 class TestUtilsHttp(unittest.TestCase):
@@ -19,6 +18,9 @@ class TestUtilsHttp(unittest.TestCase):
         self.assertTrue(http.same_origin('http://foo.com/', 'http://foo.com'))
         # With port
         self.assertTrue(http.same_origin('https://foo.com:8000', 'https://foo.com:8000/'))
+        # No port given but according to RFC6454 still the same origin
+        self.assertTrue(http.same_origin('http://foo.com', 'http://foo.com:80/'))
+        self.assertTrue(http.same_origin('https://foo.com', 'https://foo.com:443/'))
 
     def test_same_origin_false(self):
         # Different scheme
@@ -29,6 +31,9 @@ class TestUtilsHttp(unittest.TestCase):
         self.assertFalse(http.same_origin('http://foo.com', 'http://foo.com.evil.com'))
         # Different port
         self.assertFalse(http.same_origin('http://foo.com:8000', 'http://foo.com:8001'))
+        # No port given
+        self.assertFalse(http.same_origin('http://foo.com', 'http://foo.com:8000/'))
+        self.assertFalse(http.same_origin('https://foo.com', 'https://foo.com:8000/'))
 
     def test_urlencode(self):
         # 2-tuples (the norm)
@@ -110,7 +115,9 @@ class TestUtilsHttp(unittest.TestCase):
                         'http:\/example.com',
                         'http:/\example.com',
                         'javascript:alert("XSS")',
-                        '\njavascript:alert(x)'):
+                        '\njavascript:alert(x)',
+                        '\x08//example.com',
+                        '\n'):
             self.assertFalse(http.is_safe_url(bad_url, host='testserver'), "%s should be blocked" % bad_url)
         for good_url in ('/view/?param=http://example.com',
                      '/view/?param=https://example.com',

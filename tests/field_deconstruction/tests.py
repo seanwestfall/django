@@ -1,11 +1,11 @@
 from __future__ import unicode_literals
 
 from django.db import models
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 from django.utils import six
 
 
-class FieldDeconstructionTests(TestCase):
+class FieldDeconstructionTests(SimpleTestCase):
     """
     Tests the deconstruct() method on all core fields.
     """
@@ -68,6 +68,13 @@ class FieldDeconstructionTests(TestCase):
         self.assertEqual(path, "django.db.models.CharField")
         self.assertEqual(args, [])
         self.assertEqual(kwargs, {"max_length": 65, "null": True, "blank": True})
+
+    def test_char_field_choices(self):
+        field = models.CharField(max_length=1, choices=(("A", "One"), ("B", "Two")))
+        name, path, args, kwargs = field.deconstruct()
+        self.assertEqual(path, "django.db.models.CharField")
+        self.assertEqual(args, [])
+        self.assertEqual(kwargs, {"choices": [("A", "One"), ("B", "Two")], "max_length": 1})
 
     def test_csi_field(self):
         field = models.CommaSeparatedIntegerField(max_length=100)
@@ -171,8 +178,8 @@ class FieldDeconstructionTests(TestCase):
         # Test basic pointing
         from django.contrib.auth.models import Permission
         field = models.ForeignKey("auth.Permission")
-        field.rel.to = Permission
-        field.rel.field_name = "id"
+        field.remote_field.model = Permission
+        field.remote_field.field_name = "id"
         name, path, args, kwargs = field.deconstruct()
         self.assertEqual(path, "django.db.models.ForeignKey")
         self.assertEqual(args, [])

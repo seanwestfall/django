@@ -3,11 +3,15 @@ from __future__ import unicode_literals
 
 from itertools import chain
 
-from django.contrib.admin.utils import get_fields_from_path, NotRelationField, flatten
+from django.contrib.admin.utils import (
+    NotRelationField, flatten, get_fields_from_path,
+)
 from django.core import checks
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
-from django.forms.models import BaseModelForm, _get_foreign_key, BaseModelFormSet
+from django.forms.models import (
+    BaseModelForm, BaseModelFormSet, _get_foreign_key,
+)
 
 
 def check_admin_app(**kwargs):
@@ -176,7 +180,7 @@ class BaseModelAdminChecks(object):
                 return []
             else:
                 if (isinstance(field, models.ManyToManyField) and
-                        not field.rel.through._meta.auto_created):
+                        not field.remote_field.through._meta.auto_created):
                     return [
                         checks.Error(
                             ("The value of '%s' cannot include the ManyToManyField '%s', "
@@ -772,15 +776,6 @@ class ModelAdminChecks(BaseModelAdminChecks):
             if field_name not in cls.list_display:
                 return refer_to_missing_field(field=field_name, option=label,
                                               model=model, obj=cls, id='admin.E122')
-
-                checks.Error(
-                    "The value of '%s' refers to '%s', which is not contained in 'list_display'." % (
-                        label, field_name
-                    ),
-                    hint=None,
-                    obj=cls,
-                    id='admin.E122',
-                ),
             elif cls.list_display_links and field_name in cls.list_display_links:
                 return [
                     checks.Error(

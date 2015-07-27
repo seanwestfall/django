@@ -1,14 +1,13 @@
-from collections import Counter, OrderedDict
 import os
-import sys
 import warnings
+from collections import Counter, OrderedDict
 
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import lru_cache
-from django.utils import six
-from django.utils.deprecation import RemovedInDjango20Warning
+from django.utils._os import upath
+from django.utils.deprecation import RemovedInDjango110Warning
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 
@@ -34,8 +33,8 @@ class EngineHandler(object):
         if not self._templates:
             warnings.warn(
                 "You haven't defined a TEMPLATES setting. You must do so "
-                "before upgrading to Django 2.0. Otherwise Django will be "
-                "unable to load templates.", RemovedInDjango20Warning)
+                "before upgrading to Django 1.10. Otherwise Django will be "
+                "unable to load templates.", RemovedInDjango110Warning)
             self._templates = [
                 {
                     'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -43,6 +42,7 @@ class EngineHandler(object):
                     'OPTIONS': {
                         'allowed_include_roots': settings.ALLOWED_INCLUDE_ROOTS,
                         'context_processors': settings.TEMPLATE_CONTEXT_PROCESSORS,
+                        'debug': settings.TEMPLATE_DEBUG,
                         'loaders': settings.TEMPLATE_LOADERS,
                         'string_if_invalid': settings.TEMPLATE_STRING_IF_INVALID,
                     },
@@ -50,6 +50,7 @@ class EngineHandler(object):
             ]
 
         templates = OrderedDict()
+        backend_names = []
         for tpl in self._templates:
             tpl = tpl.copy()
             try:
@@ -68,8 +69,9 @@ class EngineHandler(object):
             tpl.setdefault('OPTIONS', {})
 
             templates[tpl['NAME']] = tpl
+            backend_names.append(tpl['NAME'])
 
-        counts = Counter(list(templates))
+        counts = Counter(backend_names)
         duplicates = [alias for alias, count in counts.most_common() if count > 1]
         if duplicates:
             raise ImproperlyConfigured(
@@ -90,6 +92,10 @@ class EngineHandler(object):
                     "Could not find config for '{}' "
                     "in settings.TEMPLATES".format(alias))
 
+            # If importing or initializing the backend raises an exception,
+            # self._engines[alias] isn't set and this code may get executed
+            # again, so we must preserve the original params. See #24265.
+            params = params.copy()
             backend = params.pop('BACKEND')
             engine_cls = import_string(backend)
             engine = engine_cls(params)
@@ -112,16 +118,12 @@ def get_app_template_dirs(dirname):
     dirname is the name of the subdirectory containing templates inside
     installed applications.
     """
-    if six.PY2:
-        fs_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
     template_dirs = []
     for app_config in apps.get_app_configs():
         if not app_config.path:
             continue
         template_dir = os.path.join(app_config.path, dirname)
         if os.path.isdir(template_dir):
-            if six.PY2:
-                template_dir = template_dir.decode(fs_encoding)
-            template_dirs.append(template_dir)
+            template_dirs.append(upath(template_dir))
     # Immutable return value because it will be cached and shared by callers.
     return tuple(template_dirs)

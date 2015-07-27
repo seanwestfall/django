@@ -1,10 +1,7 @@
 from __future__ import unicode_literals
 
-from collections import Counter
-from copy import copy
 import difflib
 import errno
-from functools import wraps
 import json
 import os
 import posixpath
@@ -14,34 +11,42 @@ import sys
 import threading
 import unittest
 import warnings
-from unittest import skipIf         # NOQA: Imported here for backward compatibility
+from collections import Counter
+from copy import copy
+from functools import wraps
 from unittest.util import safe_repr
 
 from django.apps import apps
 from django.conf import settings
 from django.core import mail
-from django.core.exceptions import ValidationError, ImproperlyConfigured
-from django.core.handlers.wsgi import get_path_info, WSGIHandler
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.core.handlers.wsgi import WSGIHandler, get_path_info
 from django.core.management import call_command
 from django.core.management.color import no_style
-from django.core.management.commands import flush
+from django.core.management.sql import emit_post_migrate_signal
 from django.core.servers.basehttp import WSGIRequestHandler, WSGIServer
 from django.core.urlresolvers import clear_url_caches, set_urlconf
-from django.db import connection, connections, DEFAULT_DB_ALIAS, transaction
+from django.db import DEFAULT_DB_ALIAS, connection, connections, transaction
 from django.forms.fields import CharField
 from django.http import QueryDict
 from django.test.client import Client
 from django.test.html import HTMLParseError, parse_html
 from django.test.signals import setting_changed, template_rendered
-from django.test.utils import (CaptureQueriesContext, ContextList,
-    override_settings, modify_settings, compare_xml)
-from django.utils.deprecation import RemovedInDjango20Warning
-from django.utils.encoding import force_text
+from django.test.utils import (
+    CaptureQueriesContext, ContextList, compare_xml, modify_settings,
+    override_settings,
+)
 from django.utils import six
-from django.utils.six.moves.urllib.parse import urlsplit, urlunsplit, urlparse, unquote
+from django.utils.decorators import classproperty
+from django.utils.deprecation import (
+    RemovedInDjango20Warning, RemovedInDjango110Warning,
+)
+from django.utils.encoding import force_text
+from django.utils.six.moves.urllib.parse import (
+    unquote, urlparse, urlsplit, urlunsplit,
+)
 from django.utils.six.moves.urllib.request import url2pathname
 from django.views.static import serve
-
 
 __all__ = ('TestCase', 'TransactionTestCase',
            'SimpleTestCase', 'skipIfDBFeature', 'skipUnlessDBFeature')
@@ -136,6 +141,19 @@ class _AssertTemplateNotUsedContext(_AssertTemplateUsedContext):
         return '%s was rendered.' % self.template_name
 
 
+class _CursorFailure(object):
+    def __init__(self, cls_name, wrapped):
+        self.cls_name = cls_name
+        self.wrapped = wrapped
+
+    def __call__(self):
+        raise AssertionError(
+            "Database queries aren't allowed in SimpleTestCase. "
+            "Either use TestCase or TransactionTestCase to ensure proper test isolation or "
+            "set %s.allow_database_queries to True to silence this failure." % self.cls_name
+        )
+
+
 class SimpleTestCase(unittest.TestCase):
 
     # The class we'll use for the test client self.client.
@@ -144,23 +162,37 @@ class SimpleTestCase(unittest.TestCase):
     _overridden_settings = None
     _modified_settings = None
 
+    # Tests shouldn't be allowed to query the database since
+    # this base class doesn't enforce any isolation.
+    allow_database_queries = False
+
     @classmethod
     def setUpClass(cls):
+        super(SimpleTestCase, cls).setUpClass()
         if cls._overridden_settings:
             cls._cls_overridden_context = override_settings(**cls._overridden_settings)
             cls._cls_overridden_context.enable()
         if cls._modified_settings:
             cls._cls_modified_context = modify_settings(cls._modified_settings)
             cls._cls_modified_context.enable()
+        if not cls.allow_database_queries:
+            for alias in connections:
+                connection = connections[alias]
+                connection.cursor = _CursorFailure(cls.__name__, connection.cursor)
 
     @classmethod
     def tearDownClass(cls):
+        if not cls.allow_database_queries:
+            for alias in connections:
+                connection = connections[alias]
+                connection.cursor = connection.cursor.wrapped
         if hasattr(cls, '_cls_modified_context'):
             cls._cls_modified_context.disable()
             delattr(cls, '_cls_modified_context')
         if hasattr(cls, '_cls_overridden_context'):
             cls._cls_overridden_context.disable()
             delattr(cls, '_cls_overridden_context')
+        super(SimpleTestCase, cls).tearDownClass()
 
     def __call__(self, result=None):
         """
@@ -201,9 +233,9 @@ class SimpleTestCase(unittest.TestCase):
         if hasattr(self, 'urls'):
             warnings.warn(
                 "SimpleTestCase.urls is deprecated and will be removed in "
-                "Django 2.0. Use @override_settings(ROOT_URLCONF=...) "
+                "Django 1.10. Use @override_settings(ROOT_URLCONF=...) "
                 "in %s instead." % self.__class__.__name__,
-                RemovedInDjango20Warning, stacklevel=2)
+                RemovedInDjango110Warning, stacklevel=2)
             set_urlconf(None)
             self._old_root_urlconf = settings.ROOT_URLCONF
             settings.ROOT_URLCONF = self.urls
@@ -245,10 +277,14 @@ class SimpleTestCase(unittest.TestCase):
         TestClient to do a request (use fetch_redirect_response=False to check
         such links without fetching them).
         """
+        if host is not None:
+            warnings.warn(
+                "The host argument is deprecated and no longer used by assertRedirects",
+                RemovedInDjango20Warning, stacklevel=2
+            )
+
         if msg_prefix:
             msg_prefix += ": "
-
-        e_scheme, e_netloc, e_path, e_query, e_fragment = urlsplit(expected_url)
 
         if hasattr(response, 'redirect_chain'):
             # The request was a followed redirect
@@ -291,10 +327,18 @@ class SimpleTestCase(unittest.TestCase):
                     " response code was %d (expected %d)" %
                         (path, redirect_response.status_code, target_status_code))
 
-        e_scheme = e_scheme if e_scheme else scheme or 'http'
-        e_netloc = e_netloc if e_netloc else host or 'testserver'
-        expected_url = urlunsplit((e_scheme, e_netloc, e_path, e_query,
-            e_fragment))
+        if url != expected_url:
+            # For temporary backwards compatibility, try to compare with a relative url
+            e_scheme, e_netloc, e_path, e_query, e_fragment = urlsplit(expected_url)
+            relative_url = urlunsplit(('', '', e_path, e_query, e_fragment))
+            if url == relative_url:
+                warnings.warn(
+                    "assertRedirects had to strip the scheme and domain from the "
+                    "expected URL, as it was always added automatically to URLs "
+                    "before Django 1.9. Please update your expected URLs by "
+                    "removing the scheme and domain.",
+                    RemovedInDjango20Warning, stacklevel=2)
+                expected_url = relative_url
 
         self.assertEqual(url, expected_url,
             msg_prefix + "Response redirected to '%s', expected '%s'" %
@@ -560,8 +604,7 @@ class SimpleTestCase(unittest.TestCase):
             msg_prefix + "Template '%s' was used unexpectedly in rendering"
             " the response" % template_name)
 
-    def assertRaisesMessage(self, expected_exception, expected_message,
-                           callable_obj=None, *args, **kwargs):
+    def assertRaisesMessage(self, expected_exception, expected_message, *args, **kwargs):
         """
         Asserts that the message in a raised exception matches the passed
         value.
@@ -569,12 +612,15 @@ class SimpleTestCase(unittest.TestCase):
         Args:
             expected_exception: Exception class expected to be raised.
             expected_message: expected error message string value.
-            callable_obj: Function to be called.
-            args: Extra args.
+            args: Function to be called and extra positional args.
             kwargs: Extra kwargs.
         """
+        # callable_obj was a documented kwarg in Django 1.8 and older.
+        callable_obj = kwargs.pop('callable_obj', None)
+        if callable_obj:
+            args = (callable_obj,) + args
         return six.assertRaisesRegex(self, expected_exception,
-                re.escape(expected_message), callable_obj, *args, **kwargs)
+                re.escape(expected_message), *args, **kwargs)
 
     def assertFieldOutput(self, fieldclass, valid, invalid, field_args=None,
             field_kwargs=None, empty_value=''):
@@ -757,6 +803,10 @@ class TransactionTestCase(SimpleTestCase):
     # This can be slow; this flag allows enabling on a per-case basis.
     serialized_rollback = False
 
+    # Since tests will be wrapped in a transaction, or serialized if they
+    # are not available, we allow queries to be run.
+    allow_database_queries = True
+
     def _pre_setup(self):
         """Performs any pre-test setup. This includes:
 
@@ -773,7 +823,7 @@ class TransactionTestCase(SimpleTestCase):
                                  value=self.available_apps,
                                  enter=True)
             for db_name in self._databases_names(include_mirrors=False):
-                flush.Command.emit_post_migrate(verbosity=0, interactive=False, database=db_name)
+                emit_post_migrate_signal(verbosity=0, interactive=False, db=db_name)
         try:
             self._fixture_setup()
         except Exception:
@@ -1033,6 +1083,16 @@ def skipUnlessDBFeature(*features):
     )
 
 
+def skipUnlessAnyDBFeature(*features):
+    """
+    Skip a test unless a database has any of the named features.
+    """
+    return _deferredSkip(
+        lambda: not any(getattr(connection.features, feature, False) for feature in features),
+        "Database doesn't support any of the feature(s): %s" % ", ".join(features)
+    )
+
+
 class QuietWSGIRequestHandler(WSGIRequestHandler):
     """
     Just a regular WSGIRequestHandler except it doesn't log to the standard
@@ -1200,10 +1260,10 @@ class LiveServerTestCase(TransactionTestCase):
 
     static_handler = _StaticFilesHandler
 
-    @property
-    def live_server_url(self):
+    @classproperty
+    def live_server_url(cls):
         return 'http://%s:%s' % (
-            self.server_thread.host, self.server_thread.port)
+            cls.server_thread.host, cls.server_thread.port)
 
     @classmethod
     def setUpClass(cls):

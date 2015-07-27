@@ -5,8 +5,8 @@ from django.conf.urls import url
 from django.contrib.auth import views as auth_views
 from django.views.generic import RedirectView
 
-from .models import Article, DateArticle
 from . import views
+from .models import Article, DateArticle
 
 date_based_info_dict = {
     'queryset': Article.objects.all(),
@@ -32,7 +32,6 @@ urlpatterns = [
     url(r'^accounts/logout/$', auth_views.logout),
 
     # Special URLs for particular regression cases.
-    url('^中文/$', views.redirect),
     url('^中文/target/$', views.index_page),
 ]
 

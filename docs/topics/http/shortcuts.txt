@@ -15,7 +15,7 @@ introduce controlled coupling for convenience's sake.
 ``render``
 ==========
 
-.. function:: render(request, template_name[, context][, context_instance][, content_type][, status][, current_app][, dirs])
+.. function:: render(request, template_name[, context][, context_instance][, content_type][, status][, current_app][, dirs][, using])
 
    Combines a given template with a given context dictionary and returns an
    :class:`~django.http.HttpResponse` object with that rendered text.
@@ -49,7 +49,7 @@ Optional arguments
     .. versionchanged:: 1.8
 
        The ``context`` argument used to be called ``dictionary``. That name
-       is deprecated in Django 1.8 and will be removed in Django 2.0.
+       is deprecated in Django 1.8 and will be removed in Django 1.10.
 
 ``context_instance``
     The context instance to render the template with. By default, the template
@@ -77,9 +77,13 @@ Optional arguments
        The ``current_app`` argument is deprecated. Instead you should set
        ``request.current_app``.
 
-.. versionchanged:: 1.7
+``using``
+    The :setting:`NAME <TEMPLATES-NAME>` of a template engine to use for
+    loading the template.
 
-   The ``dirs`` parameter was added.
+.. versionchanged:: 1.8
+
+    The ``using`` parameter was added.
 
 .. deprecated:: 1.8
 
@@ -113,7 +117,7 @@ This example is equivalent to::
 ``render_to_response``
 ======================
 
-.. function:: render_to_response(template_name[, context][, context_instance][, content_type][, status][, dirs])
+.. function:: render_to_response(template_name[, context][, context_instance][, content_type][, status][, dirs][, using])
 
    Renders a given template with a given context dictionary and returns an
    :class:`~django.http.HttpResponse` object with that rendered text.
@@ -138,7 +142,7 @@ Optional arguments
     .. versionchanged:: 1.8
 
        The ``context`` argument used to be called ``dictionary``. That name
-       is deprecated in Django 1.8 and will be removed in Django 2.0.
+       is deprecated in Django 1.8 and will be removed in Django 1.10.
 
 ``context_instance``
     The context instance to render the template with. By default, the template
@@ -163,13 +167,13 @@ Optional arguments
 ``status``
     The status code for the response. Defaults to ``200``.
 
+``using``
+    The :setting:`NAME <TEMPLATES-NAME>` of a template engine to use for
+    loading the template.
+
 .. versionchanged:: 1.8
 
-   The ``status`` parameter was added.
-
-.. versionchanged:: 1.7
-
-   The ``dirs`` parameter was added.
+   The ``status`` and ``using`` parameters were added.
 
 .. deprecated:: 1.8
 
@@ -223,10 +227,6 @@ This example is equivalent to::
    By default issues a temporary redirect; pass ``permanent=True`` to issue a
    permanent redirect.
 
-   .. versionchanged:: 1.7
-
-       The ability to use relative URLs was added.
-
 Examples
 --------
 
@@ -279,7 +279,7 @@ will be returned::
 
    Calls :meth:`~django.db.models.query.QuerySet.get()` on a given model manager,
    but it raises :class:`~django.http.Http404` instead of the model's
-   :class:`~django.core.exceptions.DoesNotExist` exception.
+   :class:`~django.db.models.Model.DoesNotExist` exception.
 
 Required arguments
 ------------------

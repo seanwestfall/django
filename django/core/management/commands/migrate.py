@@ -1,21 +1,23 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from collections import OrderedDict
-from importlib import import_module
 import time
 import warnings
+from collections import OrderedDict
+from importlib import import_module
 
 from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
-from django.core.management.sql import emit_post_migrate_signal, emit_pre_migrate_signal
-from django.db import connections, router, transaction, DEFAULT_DB_ALIAS
+from django.core.management.sql import (
+    emit_post_migrate_signal, emit_pre_migrate_signal,
+)
+from django.db import DEFAULT_DB_ALIAS, connections, router, transaction
+from django.db.migrations.autodetector import MigrationAutodetector
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.loader import AmbiguityError
 from django.db.migrations.state import ProjectState
-from django.db.migrations.autodetector import MigrationAutodetector
-from django.utils.deprecation import RemovedInDjango20Warning
+from django.utils.deprecation import RemovedInDjango110Warning
 from django.utils.module_loading import module_has_submodule
 
 
@@ -37,9 +39,13 @@ class Command(BaseCommand):
             default=DEFAULT_DB_ALIAS, help='Nominates a database to synchronize. '
                 'Defaults to the "default" database.')
         parser.add_argument('--fake', action='store_true', dest='fake', default=False,
-            help='Mark migrations as run without actually running them')
+            help='Mark migrations as run without actually running them.')
+        parser.add_argument('--fake-initial', action='store_true', dest='fake_initial', default=False,
+            help='Detect if tables already exist and fake-apply initial migrations if so. Make sure '
+                 'that the current database schema matches your initial migration before using this '
+                 'flag. Django will only check for an existing table name.')
         parser.add_argument('--list', '-l', action='store_true', dest='list', default=False,
-            help='Show a list of all known migrations and which are applied')
+            help='Show a list of all known migrations and which are applied.')
 
     def handle(self, *args, **options):
 
@@ -60,7 +66,7 @@ class Command(BaseCommand):
         if options.get("list", False):
             warnings.warn(
                 "The 'migrate --list' command is deprecated. Use 'showmigrations' instead.",
-                RemovedInDjango20Warning, stacklevel=2)
+                RemovedInDjango110Warning, stacklevel=2)
             self.stdout.ending = None  # Remove when #21429 is fixed
             return call_command(
                 'showmigrations',
@@ -184,7 +190,9 @@ class Command(BaseCommand):
                         "apply them."
                     ))
         else:
-            executor.migrate(targets, plan, fake=options.get("fake", False))
+            fake = options.get("fake")
+            fake_initial = options.get("fake_initial")
+            executor.migrate(targets, plan, fake=fake, fake_initial=fake_initial)
 
         # Send the post_migrate signal, so individual apps can do whatever they need
         # to do at this point.
@@ -260,7 +268,7 @@ class Command(BaseCommand):
                 deferred_sql = []
                 for app_name, model_list in manifest.items():
                     for model in model_list:
-                        if model._meta.proxy or not model._meta.managed:
+                        if not model._meta.can_migrate(connection):
                             continue
                         if self.verbosity >= 3:
                             self.stdout.write(

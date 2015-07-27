@@ -1,22 +1,22 @@
 import unittest
 
-try:
-    import sqlparse
-except ImportError:
-    sqlparse = None
-
-from django.db import migrations, models, connection
+from django.db import connection, migrations, models
 from django.db.migrations.state import ProjectState
 from django.test import override_settings
 
 from .test_operations import OperationTestBase
+
+try:
+    import sqlparse
+except ImportError:
+    sqlparse = None
 
 
 class AgnosticRouter(object):
     """
     A router that doesn't have an opinion regarding migrating.
     """
-    def allow_migrate(self, db, model, **hints):
+    def allow_migrate(self, db, app_label, **hints):
         return None
 
 
@@ -24,7 +24,7 @@ class MigrateNothingRouter(object):
     """
     A router that doesn't allow migrating.
     """
-    def allow_migrate(self, db, model, **hints):
+    def allow_migrate(self, db, app_label, **hints):
         return False
 
 
@@ -32,7 +32,7 @@ class MigrateEverythingRouter(object):
     """
     A router that always allows migrating.
     """
-    def allow_migrate(self, db, model, **hints):
+    def allow_migrate(self, db, app_label, **hints):
         return True
 
 
@@ -40,7 +40,7 @@ class MigrateWhenFooRouter(object):
     """
     A router that allows migrating depending on a hint.
     """
-    def allow_migrate(self, db, model, **hints):
+    def allow_migrate(self, db, app_label, **hints):
         return hints.get('foo', False)
 
 

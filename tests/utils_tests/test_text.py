@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import json
+
 from django.test import SimpleTestCase
 from django.utils import six, text
 from django.utils.encoding import force_text
@@ -170,11 +172,16 @@ class TestUtilsText(SimpleTestCase):
 
     def test_slugify(self):
         items = (
-            ('Hello, World!', 'hello-world'),
-            ('spam & eggs', 'spam-eggs'),
+            # given - expected - unicode?
+            ('Hello, World!', 'hello-world', False),
+            ('spam & eggs', 'spam-eggs', False),
+            ('spam & ıçüş', 'spam-ıçüş', True),
+            ('foo ıç bar', 'foo-ıç-bar', True),
+            ('    foo ıç bar', 'foo-ıç-bar', True),
+            ('你好', '你好', True),
         )
-        for value, output in items:
-            self.assertEqual(text.slugify(value), output)
+        for value, output, is_unicode in items:
+            self.assertEqual(text.slugify(value, allow_unicode=is_unicode), output)
 
     def test_unescape_entities(self):
         items = [
@@ -192,3 +199,12 @@ class TestUtilsText(SimpleTestCase):
     def test_get_valid_filename(self):
         filename = "^&'@{}[],$=!-#()%+~_123.txt"
         self.assertEqual(text.get_valid_filename(filename), "-_123.txt")
+
+    def test_compress_sequence(self):
+        data = [{'key': i} for i in range(10)]
+        seq = list(json.JSONEncoder().iterencode(data))
+        seq = [s.encode('utf-8') for s in seq]
+        actual_length = len(b''.join(seq))
+        out = text.compress_sequence(seq)
+        compressed_length = len(b''.join(out))
+        self.assertTrue(compressed_length < actual_length)

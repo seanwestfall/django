@@ -1,7 +1,8 @@
 import datetime
 
 from django.db import models
-from django.db.models.fields.related import ReverseSingleRelatedObjectDescriptor
+from django.db.models.fields.related import \
+    ReverseSingleRelatedObjectDescriptor
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import get_language
 
@@ -108,7 +109,7 @@ class ArticleTranslationDescriptor(ReverseSingleRelatedObjectDescriptor):
         if instance is None:
             raise AttributeError("%s must be accessed via instance" % self.field.name)
         setattr(instance, self.cache_name, value)
-        if value is not None and not self.field.rel.multiple:
+        if value is not None and not self.field.remote_field.multiple:
             setattr(value, self.field.related.get_cache_name(), instance)
 
 

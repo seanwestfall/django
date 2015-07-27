@@ -9,26 +9,25 @@ import os
 import shutil
 import tempfile as sys_tempfile
 import unittest
+from io import BytesIO
 
 from django.core.files import temp as tempfile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http.multipartparser import MultiPartParser, parse_header
-from django.test import TestCase, client
-from django.test import override_settings
+from django.test import SimpleTestCase, TestCase, client, override_settings
 from django.utils.encoding import force_bytes
 from django.utils.http import urlquote
-from django.utils.six import BytesIO, PY2, StringIO
+from django.utils.six import PY2, StringIO
 
 from . import uploadhandler
 from .models import FileModel
 
-
 UNICODE_FILENAME = 'test-0123456789_中文_Orléans.jpg'
-MEDIA_ROOT = sys_tempfile.mkdtemp(dir=os.environ['DJANGO_TEST_TEMP_DIR'])
+MEDIA_ROOT = sys_tempfile.mkdtemp()
 UPLOAD_TO = os.path.join(MEDIA_ROOT, 'test_upload')
 
 
-@override_settings(MEDIA_ROOT=MEDIA_ROOT, ROOT_URLCONF='file_uploads.urls', MIDDLEWARE_CLASSES=())
+@override_settings(MEDIA_ROOT=MEDIA_ROOT, ROOT_URLCONF='file_uploads.urls', MIDDLEWARE_CLASSES=[])
 class FileUploadTests(TestCase):
 
     @classmethod
@@ -52,10 +51,8 @@ class FileUploadTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_large_upload(self):
-        tdir = tempfile.gettempdir()
-
         file = tempfile.NamedTemporaryFile
-        with file(suffix=".file1", dir=tdir) as file1, file(suffix=".file2", dir=tdir) as file2:
+        with file(suffix=".file1") as file1, file(suffix=".file2") as file2:
             file1.write(b'a' * (2 ** 21))
             file1.seek(0)
 
@@ -264,11 +261,8 @@ class FileUploadTests(TestCase):
                             "Got a long file name (%s characters)." % len(got))
 
     def test_file_content(self):
-        tdir = tempfile.gettempdir()
-
         file = tempfile.NamedTemporaryFile
-        with file(suffix=".ctype_extra", dir=tdir) as no_content_type, \
-                file(suffix=".ctype_extra", dir=tdir) as simple_file:
+        with file(suffix=".ctype_extra") as no_content_type, file(suffix=".ctype_extra") as simple_file:
             no_content_type.write(b'no content')
             no_content_type.seek(0)
 
@@ -293,10 +287,8 @@ class FileUploadTests(TestCase):
 
     def test_content_type_extra(self):
         """Uploaded files may have content type parameters available."""
-        tdir = tempfile.gettempdir()
-
         file = tempfile.NamedTemporaryFile
-        with file(suffix=".ctype_extra", dir=tdir) as no_content_type, file(suffix=".ctype_extra", dir=tdir) as simple_file:
+        with file(suffix=".ctype_extra") as no_content_type, file(suffix=".ctype_extra") as simple_file:
             no_content_type.write(b'something')
             no_content_type.seek(0)
 
@@ -518,7 +510,7 @@ class FileUploadTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=MEDIA_ROOT)
-class DirectoryCreationTests(TestCase):
+class DirectoryCreationTests(SimpleTestCase):
     """
     Tests for error handling during directory creation
     via _save_FIELD_file (ticket #6450)
@@ -542,7 +534,7 @@ class DirectoryCreationTests(TestCase):
         os.chmod(MEDIA_ROOT, 0o500)
         self.addCleanup(os.chmod, MEDIA_ROOT, 0o700)
         try:
-            self.obj.testfile.save('foo.txt', SimpleUploadedFile('foo.txt', b'x'))
+            self.obj.testfile.save('foo.txt', SimpleUploadedFile('foo.txt', b'x'), save=False)
         except OSError as err:
             self.assertEqual(err.errno, errno.EACCES)
         except Exception:
@@ -555,7 +547,7 @@ class DirectoryCreationTests(TestCase):
         self.addCleanup(os.remove, UPLOAD_TO)
         with self.assertRaises(IOError) as exc_info:
             with SimpleUploadedFile('foo.txt', b'x') as file:
-                self.obj.testfile.save('foo.txt', file)
+                self.obj.testfile.save('foo.txt', file, save=False)
         # The test needs to be done on a specific string as IOError
         # is raised even without the patch (just not early enough)
         self.assertEqual(exc_info.exception.args[0],
@@ -580,6 +572,23 @@ class MultiParserTests(unittest.TestCase):
              "foo-ä.html"),
             (b"Content-Type: application/x-stuff; title*=iso-8859-1''foo-%E4.html",
              "foo-ä.html"),
+        )
+        for raw_line, expected_title in test_data:
+            parsed = parse_header(raw_line)
+            self.assertEqual(parsed[1]['title'], expected_title)
+
+    def test_rfc2231_wrong_title(self):
+        """
+        Test wrongly formatted RFC 2231 headers (missing double single quotes).
+        Parsing should not crash (#24209).
+        """
+        test_data = (
+            (b"Content-Type: application/x-stuff; title*='This%20is%20%2A%2A%2Afun%2A%2A%2A",
+             b"'This%20is%20%2A%2A%2Afun%2A%2A%2A"),
+            (b"Content-Type: application/x-stuff; title*='foo.html",
+             b"'foo.html"),
+            (b"Content-Type: application/x-stuff; title*=bar.html",
+             b"bar.html"),
         )
         for raw_line, expected_title in test_data:
             parsed = parse_header(raw_line)

@@ -5,13 +5,12 @@ from calendar import timegm
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
-from django.http import HttpResponse, Http404
-from django.template import loader, TemplateDoesNotExist
-from django.utils import feedgenerator
+from django.http import Http404, HttpResponse
+from django.template import TemplateDoesNotExist, loader
+from django.utils import feedgenerator, six
 from django.utils.encoding import force_text, iri_to_uri, smart_text
 from django.utils.html import escape
 from django.utils.http import http_date
-from django.utils import six
 from django.utils.timezone import get_default_timezone, is_naive, make_aware
 
 
@@ -20,9 +19,7 @@ def add_domain(domain, url, secure=False):
     if url.startswith('//'):
         # Support network-path reference (see #16753) - RSS requires a protocol
         url = '%s:%s' % (protocol, url)
-    elif not (url.startswith('http://')
-            or url.startswith('https://')
-            or url.startswith('mailto:')):
+    elif not url.startswith(('http://', 'https://', 'mailto:')):
         url = iri_to_uri('%s://%s%s' % (protocol, domain, url))
     return url
 
@@ -42,7 +39,7 @@ class Feed(object):
         except ObjectDoesNotExist:
             raise Http404('Feed object does not exist.')
         feedgen = self.get_feed(obj, request)
-        response = HttpResponse(content_type=feedgen.mime_type)
+        response = HttpResponse(content_type=feedgen.content_type)
         if hasattr(self, 'item_pubdate') or hasattr(self, 'item_updateddate'):
             # if item_pubdate or item_updateddate is defined for the feed, set
             # header so as ConditionalGetMiddleware is able to send 304 NOT MODIFIED

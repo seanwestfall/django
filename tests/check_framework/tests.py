@@ -1,21 +1,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from django.utils.six import StringIO
 import sys
 
 from django.apps import apps
-from django.conf import settings
 from django.core import checks
 from django.core.checks import Error, Warning
 from django.core.checks.registry import CheckRegistry
-from django.core.checks.compatibility.django_1_7_0 import check_1_7_compatibility
-from django.core.management.base import CommandError
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import models
-from django.test import TestCase
+from django.test import SimpleTestCase
 from django.test.utils import override_settings, override_system_checks
 from django.utils.encoding import force_text
+from django.utils.six import StringIO
 
 from .models import SimpleModel
 
@@ -25,7 +23,7 @@ class DummyObj(object):
         return "obj"
 
 
-class SystemCheckFrameworkTests(TestCase):
+class SystemCheckFrameworkTests(SimpleTestCase):
 
     def test_register_and_run_checks(self):
 
@@ -71,7 +69,7 @@ class SystemCheckFrameworkTests(TestCase):
         self.assertEqual(sorted(errors), [4, 5])
 
 
-class MessageTests(TestCase):
+class MessageTests(SimpleTestCase):
 
     def test_printing(self):
         e = Error("Message", hint="Hint", obj=DummyObj())
@@ -111,40 +109,6 @@ class MessageTests(TestCase):
         self.assertEqual(force_text(e), expected)
 
 
-class Django_1_7_0_CompatibilityChecks(TestCase):
-
-    @override_settings(MIDDLEWARE_CLASSES=('django.contrib.sessions.middleware.SessionMiddleware',))
-    def test_middleware_classes_overridden(self):
-        errors = check_1_7_compatibility()
-        self.assertEqual(errors, [])
-
-    def test_middleware_classes_not_set_explicitly(self):
-        # If MIDDLEWARE_CLASSES was set explicitly, temporarily pretend it wasn't
-        middleware_classes_overridden = False
-        if 'MIDDLEWARE_CLASSES' in settings._wrapped._explicit_settings:
-            middleware_classes_overridden = True
-            settings._wrapped._explicit_settings.remove('MIDDLEWARE_CLASSES')
-        try:
-            errors = check_1_7_compatibility()
-            expected = [
-                checks.Warning(
-                    "MIDDLEWARE_CLASSES is not set.",
-                    hint=("Django 1.7 changed the global defaults for the MIDDLEWARE_CLASSES. "
-                          "django.contrib.sessions.middleware.SessionMiddleware, "
-                          "django.contrib.auth.middleware.AuthenticationMiddleware, and "
-                          "django.contrib.messages.middleware.MessageMiddleware were removed from the defaults. "
-                          "If your project needs these middleware then you should configure this setting."),
-                    obj=None,
-                    id='1_7.W001',
-                )
-            ]
-            self.assertEqual(errors, expected)
-        finally:
-            # Restore settings value
-            if middleware_classes_overridden:
-                settings._wrapped._explicit_settings.add('MIDDLEWARE_CLASSES')
-
-
 def simple_system_check(**kwargs):
     simple_system_check.kwargs = kwargs
     return []
@@ -162,7 +126,7 @@ def deployment_system_check(**kwargs):
 deployment_system_check.tags = ['deploymenttag']
 
 
-class CheckCommandTests(TestCase):
+class CheckCommandTests(SimpleTestCase):
 
     def setUp(self):
         simple_system_check.kwargs = None
@@ -249,7 +213,7 @@ def custom_warning_system_check(app_configs, **kwargs):
     ]
 
 
-class SilencingCheckTests(TestCase):
+class SilencingCheckTests(SimpleTestCase):
 
     def setUp(self):
         self.old_stdout, self.old_stderr = sys.stdout, sys.stderr
@@ -302,7 +266,7 @@ class IsolateModelsMixin(object):
         apps.clear_cache()
 
 
-class CheckFrameworkReservedNamesTests(IsolateModelsMixin, TestCase):
+class CheckFrameworkReservedNamesTests(IsolateModelsMixin, SimpleTestCase):
     @override_settings(
         SILENCED_SYSTEM_CHECKS=['models.E20', 'fields.W342'],  # ForeignKey(unique=True)
         INSTALLED_APPS=['django.contrib.auth', 'django.contrib.contenttypes', 'check_framework']

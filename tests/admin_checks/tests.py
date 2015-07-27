@@ -4,9 +4,9 @@ from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericStackedInline
 from django.core import checks
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 
-from .models import Song, Book, Album, TwoAlbumFKAndAnE, City, State, Influence
+from .models import Album, Book, City, Influence, Song, State, TwoAlbumFKAndAnE
 
 
 class SongForm(forms.ModelForm):
@@ -41,7 +41,7 @@ class MyAdmin(admin.ModelAdmin):
     SILENCED_SYSTEM_CHECKS=['fields.W342'],  # ForeignKey(unique=True)
     INSTALLED_APPS=['django.contrib.auth', 'django.contrib.contenttypes', 'admin_checks']
 )
-class SystemChecksTestCase(TestCase):
+class SystemChecksTestCase(SimpleTestCase):
 
     @override_settings(DEBUG=True)
     def test_checks_are_performed(self):
@@ -667,3 +667,20 @@ class SystemChecksTestCase(TestCase):
             )
         ]
         self.assertEqual(errors, expected)
+
+    def test_list_filter_works_on_through_field_even_when_apps_not_ready(self):
+        """
+        Ensure list_filter can access reverse fields even when the app registry
+        is not ready; refs #24146.
+        """
+        class BookAdminWithListFilter(admin.ModelAdmin):
+            list_filter = ['authorsbooks__featured']
+
+        # Temporarily pretending apps are not ready yet. This issue can happen
+        # if the value of 'list_filter' refers to a 'through__field'.
+        Book._meta.apps.ready = False
+        try:
+            errors = BookAdminWithListFilter.check(model=Book)
+            self.assertEqual(errors, [])
+        finally:
+            Book._meta.apps.ready = True

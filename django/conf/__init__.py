@@ -8,14 +8,13 @@ a list of all possible variables.
 
 import importlib
 import os
-import time     # Needed for Windows
+import time
 import warnings
 
 from django.conf import global_settings
 from django.core.exceptions import ImproperlyConfigured
-from django.utils.deprecation import RemovedInDjango20Warning
+from django.utils.deprecation import RemovedInDjango110Warning
 from django.utils.functional import LazyObject, empty
-from django.utils import six
 
 ENVIRONMENT_VARIABLE = "DJANGO_SETTINGS_MODULE"
 
@@ -103,8 +102,8 @@ class Settings(BaseSettings):
                 setting_value = getattr(mod, setting)
 
                 if (setting in tuple_settings and
-                        isinstance(setting_value, six.string_types)):
-                    raise ImproperlyConfigured("The %s setting must be a tuple. "
+                        not isinstance(setting_value, (list, tuple))):
+                    raise ImproperlyConfigured("The %s setting must be a list or a tuple. "
                             "Please fix your settings." % setting)
                 setattr(self, setting, setting_value)
                 self._explicit_settings.add(setting)
@@ -115,11 +114,11 @@ class Settings(BaseSettings):
         if ('django.contrib.auth.middleware.AuthenticationMiddleware' in self.MIDDLEWARE_CLASSES and
                 'django.contrib.auth.middleware.SessionAuthenticationMiddleware' not in self.MIDDLEWARE_CLASSES):
             warnings.warn(
-                "Session verification will become mandatory in Django 2.0. "
+                "Session verification will become mandatory in Django 1.10. "
                 "Please add 'django.contrib.auth.middleware.SessionAuthenticationMiddleware' "
                 "to your MIDDLEWARE_CLASSES setting when you are ready to opt-in after "
                 "reading the upgrade considerations in the 1.8 release notes.",
-                RemovedInDjango20Warning
+                RemovedInDjango110Warning
             )
 
         if hasattr(time, 'tzset') and self.TIME_ZONE:

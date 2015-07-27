@@ -1,21 +1,20 @@
-# Needed ctypes routines
-from ctypes import c_double, byref
+from ctypes import byref, c_double
 
-# Other GDAL imports.
 from django.contrib.gis.gdal.base import GDALBase
 from django.contrib.gis.gdal.envelope import Envelope, OGREnvelope
-from django.contrib.gis.gdal.error import GDALException, OGRIndexError, SRSException
+from django.contrib.gis.gdal.error import (
+    GDALException, OGRIndexError, SRSException,
+)
 from django.contrib.gis.gdal.feature import Feature
 from django.contrib.gis.gdal.field import OGRFieldTypes
-from django.contrib.gis.gdal.geomtype import OGRGeomType
 from django.contrib.gis.gdal.geometries import OGRGeometry
+from django.contrib.gis.gdal.geomtype import OGRGeomType
+from django.contrib.gis.gdal.prototypes import (
+    ds as capi, geom as geom_api, srs as srs_api,
+)
 from django.contrib.gis.gdal.srs import SpatialReference
-
-# GDAL ctypes function prototypes.
-from django.contrib.gis.gdal.prototypes import ds as capi, geom as geom_api, srs as srs_api
-
-from django.utils.encoding import force_bytes, force_text
 from django.utils import six
+from django.utils.encoding import force_bytes, force_text
 from django.utils.six.moves import range
 
 
@@ -26,7 +25,6 @@ from django.utils.six.moves import range
 class Layer(GDALBase):
     "A class that wraps an OGR Layer, needs to be instantiated from a DataSource object."
 
-    #### Python 'magic' routines ####
     def __init__(self, layer_ptr, ds):
         """
         Initializes on an OGR C pointer to the Layer and the `DataSource` object
@@ -95,7 +93,7 @@ class Layer(GDALBase):
         # Should have returned a Feature, raise an OGRIndexError.
         raise OGRIndexError('Invalid feature id: %s.' % feat_id)
 
-    #### Layer properties ####
+    # #### Layer properties ####
     @property
     def extent(self):
         "Returns the extent (an Envelope) of this layer."
@@ -189,7 +187,7 @@ class Layer(GDALBase):
 
     spatial_filter = property(_get_spatial_filter, _set_spatial_filter)
 
-    #### Layer Methods ####
+    # #### Layer Methods ####
     def get_fields(self, field_name):
         """
         Returns a list containing the given field name for every Feature

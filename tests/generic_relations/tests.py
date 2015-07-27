@@ -5,13 +5,14 @@ from django.contrib.contenttypes.forms import generic_inlineformset_factory
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldError
 from django.db.models import Q
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import six
 
-from .models import (TaggedItem, ValuableTaggedItem, Comparison, Animal,
-                     Vegetable, Mineral, Gecko, Rock, ManualPK,
-                     ForProxyModelModel, ForConcreteModelModel,
-                     ProxyRelatedModel, ConcreteRelatedModel, AllowsNullGFK)
+from .models import (
+    AllowsNullGFK, Animal, Comparison, ConcreteRelatedModel,
+    ForConcreteModelModel, ForProxyModelModel, Gecko, ManualPK, Mineral,
+    ProxyRelatedModel, Rock, TaggedItem, ValuableTaggedItem, Vegetable,
+)
 
 
 class GenericRelationsTests(TestCase):
@@ -245,6 +246,58 @@ class GenericRelationsTests(TestCase):
         ],
             self.comp_func
         )
+
+    def test_set(self):
+        bacon = Vegetable.objects.create(name="Bacon", is_yucky=False)
+        fatty = bacon.tags.create(tag="fatty")
+        salty = bacon.tags.create(tag="salty")
+
+        bacon.tags.set([fatty, salty])
+        self.assertQuerysetEqual(bacon.tags.all(), [
+            "<TaggedItem: fatty>",
+            "<TaggedItem: salty>",
+        ])
+
+        bacon.tags.set([fatty])
+        self.assertQuerysetEqual(bacon.tags.all(), [
+            "<TaggedItem: fatty>",
+        ])
+
+        bacon.tags.set([])
+        self.assertQuerysetEqual(bacon.tags.all(), [])
+
+        bacon.tags.set([fatty, salty], clear=True)
+        self.assertQuerysetEqual(bacon.tags.all(), [
+            "<TaggedItem: fatty>",
+            "<TaggedItem: salty>",
+        ])
+
+        bacon.tags.set([fatty], clear=True)
+        self.assertQuerysetEqual(bacon.tags.all(), [
+            "<TaggedItem: fatty>",
+        ])
+
+        bacon.tags.set([], clear=True)
+        self.assertQuerysetEqual(bacon.tags.all(), [])
+
+    def test_assign(self):
+        bacon = Vegetable.objects.create(name="Bacon", is_yucky=False)
+        fatty = bacon.tags.create(tag="fatty")
+        salty = bacon.tags.create(tag="salty")
+
+        bacon.tags = [fatty, salty]
+        self.assertQuerysetEqual(bacon.tags.all(), [
+            "<TaggedItem: fatty>",
+            "<TaggedItem: salty>",
+        ])
+
+        bacon.tags = [fatty]
+        self.assertQuerysetEqual(bacon.tags.all(), [
+            "<TaggedItem: fatty>",
+        ])
+
+        bacon.tags = []
+        self.assertQuerysetEqual(bacon.tags.all(), [])
 
     def test_assign_with_queryset(self):
         # Ensure that querysets used in reverse GFK assignments are pre-evaluated
@@ -565,7 +618,7 @@ class ProxyRelatedModelTest(TestCase):
         self.assertEqual(base, newrel.bases.get())
 
 
-class TestInitWithNoneArgument(TestCase):
+class TestInitWithNoneArgument(SimpleTestCase):
     def test_none_not_allowed(self):
         # TaggedItem requires a content_type, initializing with None should
         # raise a ValueError.

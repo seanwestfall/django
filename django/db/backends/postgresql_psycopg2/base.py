@@ -4,30 +4,45 @@ PostgreSQL database backend for Django.
 Requires psycopg 2: http://initd.org/projects/psycopg2
 """
 
+import warnings
+
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+from django.db import DEFAULT_DB_ALIAS
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.base.validation import BaseDatabaseValidation
+from django.db.utils import DatabaseError as WrappedDatabaseError
 from django.utils.encoding import force_str
 from django.utils.functional import cached_property
-from django.utils.safestring import SafeText, SafeBytes
+from django.utils.safestring import SafeBytes, SafeText
 
 try:
     import psycopg2 as Database
     import psycopg2.extensions
     import psycopg2.extras
 except ImportError as e:
-    from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("Error loading psycopg2 module: %s" % e)
 
+
+def psycopg2_version():
+    version = psycopg2.__version__.split(' ', 1)[0]
+    return tuple(int(v) for v in version.split('.') if v.isdigit())
+
+PSYCOPG2_VERSION = psycopg2_version()
+
+if PSYCOPG2_VERSION < (2, 4, 5):
+    raise ImproperlyConfigured("psycopg2_version 2.4.5 or newer is required; you have %s" % psycopg2.__version__)
+
+
 # Some of these import psycopg2, so import them after checking if it's installed.
-from .client import DatabaseClient
-from .creation import DatabaseCreation
-from .features import DatabaseFeatures
-from .introspection import DatabaseIntrospection
-from .operations import DatabaseOperations
-from .schema import DatabaseSchemaEditor
-from .utils import utc_tzinfo_factory
-from .version import get_version
+from .client import DatabaseClient                          # isort:skip
+from .creation import DatabaseCreation                      # isort:skip
+from .features import DatabaseFeatures                      # isort:skip
+from .introspection import DatabaseIntrospection            # isort:skip
+from .operations import DatabaseOperations                  # isort:skip
+from .schema import DatabaseSchemaEditor                    # isort:skip
+from .utils import utc_tzinfo_factory                       # isort:skip
+from .version import get_version                            # isort:skip
 
 DatabaseError = Database.DatabaseError
 IntegrityError = Database.IntegrityError
@@ -127,10 +142,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     def __init__(self, *args, **kwargs):
         super(DatabaseWrapper, self).__init__(*args, **kwargs)
 
-        opts = self.settings_dict["OPTIONS"]
-        RC = psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED
-        self.isolation_level = opts.get('isolation_level', RC)
-
         self.features = DatabaseFeatures(self)
         self.ops = DatabaseOperations(self)
         self.client = DatabaseClient(self)
@@ -142,7 +153,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         settings_dict = self.settings_dict
         # None may be used to connect to the default 'postgres' db
         if settings_dict['NAME'] == '':
-            from django.core.exceptions import ImproperlyConfigured
             raise ImproperlyConfigured(
                 "settings.DATABASES is improperly configured. "
                 "Please supply the NAME value.")
@@ -150,10 +160,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             'database': settings_dict['NAME'] or 'postgres',
         }
         conn_params.update(settings_dict['OPTIONS'])
-        if 'autocommit' in conn_params:
-            del conn_params['autocommit']
-        if 'isolation_level' in conn_params:
-            del conn_params['isolation_level']
+        conn_params.pop('isolation_level', None)
         if settings_dict['USER']:
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
@@ -165,53 +172,48 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return conn_params
 
     def get_new_connection(self, conn_params):
-        return Database.connect(**conn_params)
+        connection = Database.connect(**conn_params)
+
+        # self.isolation_level must be set:
+        # - after connecting to the database in order to obtain the database's
+        #   default when no value is explicitly specified in options.
+        # - before calling _set_autocommit() because if autocommit is on, that
+        #   will set connection.isolation_level to ISOLATION_LEVEL_AUTOCOMMIT.
+        options = self.settings_dict['OPTIONS']
+        try:
+            self.isolation_level = options['isolation_level']
+        except KeyError:
+            self.isolation_level = connection.isolation_level
+        else:
+            # Set the isolation level to the value from OPTIONS.
+            if self.isolation_level != connection.isolation_level:
+                connection.set_session(isolation_level=self.isolation_level)
+
+        return connection
 
     def init_connection_state(self):
-        settings_dict = self.settings_dict
         self.connection.set_client_encoding('UTF8')
-        tz = 'UTC' if settings.USE_TZ else settings_dict.get('TIME_ZONE')
-        if tz:
-            try:
-                get_parameter_status = self.connection.get_parameter_status
-            except AttributeError:
-                # psycopg2 < 2.0.12 doesn't have get_parameter_status
-                conn_tz = None
-            else:
-                conn_tz = get_parameter_status('TimeZone')
 
-            if conn_tz != tz:
-                cursor = self.connection.cursor()
-                try:
-                    cursor.execute(self.ops.set_time_zone_sql(), [tz])
-                finally:
-                    cursor.close()
-                # Commit after setting the time zone (see #17062)
-                if not self.get_autocommit():
-                    self.connection.commit()
+        conn_timezone_name = self.connection.get_parameter_status('TimeZone')
+
+        if conn_timezone_name != self.timezone_name:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(self.ops.set_time_zone_sql(), [self.timezone_name])
+            finally:
+                cursor.close()
+            # Commit after setting the time zone (see #17062)
+            if not self.get_autocommit():
+                self.connection.commit()
 
     def create_cursor(self):
         cursor = self.connection.cursor()
         cursor.tzinfo_factory = utc_tzinfo_factory if settings.USE_TZ else None
         return cursor
 
-    def _set_isolation_level(self, isolation_level):
-        assert isolation_level in range(1, 5)     # Use set_autocommit for level = 0
-        if self.psycopg2_version >= (2, 4, 2):
-            self.connection.set_session(isolation_level=isolation_level)
-        else:
-            self.connection.set_isolation_level(isolation_level)
-
     def _set_autocommit(self, autocommit):
         with self.wrap_database_errors:
-            if self.psycopg2_version >= (2, 4, 2):
-                self.connection.autocommit = autocommit
-            else:
-                if autocommit:
-                    level = psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
-                else:
-                    level = self.isolation_level
-                self.connection.set_isolation_level(level)
+            self.connection.autocommit = autocommit
 
     def check_constraints(self, table_names=None):
         """
@@ -231,9 +233,30 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             return True
 
     @cached_property
+    def _nodb_connection(self):
+        nodb_connection = super(DatabaseWrapper, self)._nodb_connection
+        try:
+            nodb_connection.ensure_connection()
+        except (DatabaseError, WrappedDatabaseError):
+            warnings.warn(
+                "Normally Django will use a connection to the 'postgres' database "
+                "to avoid running initialization queries against the production "
+                "database when it's not needed (for example, when running tests). "
+                "Django was unable to create a connection to the 'postgres' database "
+                "and will use the default database instead.",
+                RuntimeWarning
+            )
+            settings_dict = self.settings_dict.copy()
+            settings_dict['NAME'] = settings.DATABASES[DEFAULT_DB_ALIAS]['NAME']
+            nodb_connection = self.__class__(
+                self.settings_dict.copy(),
+                alias=self.alias,
+                allow_thread_sharing=False)
+        return nodb_connection
+
+    @cached_property
     def psycopg2_version(self):
-        version = psycopg2.__version__.split(' ', 1)[0]
-        return tuple(int(v) for v in version.split('.') if v.isdigit())
+        return PSYCOPG2_VERSION
 
     @cached_property
     def pg_version(self):

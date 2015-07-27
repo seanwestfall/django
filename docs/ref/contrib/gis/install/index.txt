@@ -58,7 +58,7 @@ supported versions, and any notes for each of the supported database backends:
 ==================  ==============================  ==================  =========================================
 Database            Library Requirements            Supported Versions  Notes
 ==================  ==============================  ==================  =========================================
-PostgreSQL          GEOS, PROJ.4, PostGIS           9.0+                Requires PostGIS.
+PostgreSQL          GEOS, PROJ.4, PostGIS           9.1+                Requires PostGIS.
 MySQL               GEOS                            5.5+                Not OGC-compliant; :ref:`limited functionality <mysql-spatial-limitations>`.
 Oracle              GEOS                            11.1+               XE not supported.
 SQLite              GEOS, GDAL, PROJ.4, SpatiaLite  3.6.+               Requires SpatiaLite 2.3+, pysqlite2 2.5+
@@ -445,7 +445,7 @@ From within the Application Stack Builder (to run outside of the installer,
 :menuselection:`Start --> Programs --> PostgreSQL 9.x`), select
 :menuselection:`PostgreSQL Database Server 9.x on port 5432` from the drop down
 menu.  Next, expand the :menuselection:`Categories --> Spatial Extensions` menu
-tree and select :menuselection:`PostGIS 1.5 for PostgreSQL 9.x`.
+tree and select :menuselection:`PostGIS X.Y for PostgreSQL 9.x`.
 
 After clicking next, you will be prompted to select your mirror, PostGIS
 will be downloaded, and the PostGIS installer will begin.  Select only the

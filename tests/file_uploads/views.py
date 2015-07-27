@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import contextlib
 import hashlib
 import json
 import os
@@ -11,7 +12,7 @@ from django.utils.encoding import force_bytes, smart_str
 
 from .models import FileModel
 from .tests import UNICODE_FILENAME, UPLOAD_TO
-from .uploadhandler import QuotaUploadHandler, ErroringUploadHandler
+from .uploadhandler import ErroringUploadHandler, QuotaUploadHandler
 
 
 def file_upload_view(request):
@@ -100,7 +101,10 @@ def file_upload_echo_content(request):
     """
     Simple view to echo back the content of uploaded files for tests.
     """
-    r = {k: f.read().decode('utf-8') for k, f in request.FILES.items()}
+    def read_and_close(f):
+        with contextlib.closing(f):
+            return f.read().decode('utf-8')
+    r = {k: read_and_close(f) for k, f in request.FILES.items()}
     return HttpResponse(json.dumps(r))
 
 

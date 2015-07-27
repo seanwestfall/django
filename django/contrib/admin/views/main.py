@@ -1,22 +1,26 @@
-from collections import OrderedDict
 import sys
-
-from django.core.exceptions import FieldDoesNotExist, SuspiciousOperation, ImproperlyConfigured
-from django.core.paginator import InvalidPage
-from django.core.urlresolvers import reverse
-from django.db import models
-from django.utils import six
-from django.utils.encoding import force_text
-from django.utils.translation import ugettext, ugettext_lazy
-from django.utils.http import urlencode
+from collections import OrderedDict
 
 from django.contrib.admin import FieldListFilter
 from django.contrib.admin.exceptions import (
     DisallowedModelAdminLookup, DisallowedModelAdminToField,
 )
-from django.contrib.admin.options import IncorrectLookupParameters, IS_POPUP_VAR, TO_FIELD_VAR
-from django.contrib.admin.utils import (quote, get_fields_from_path,
-    lookup_needs_distinct, prepare_lookup_value)
+from django.contrib.admin.options import (
+    IS_POPUP_VAR, TO_FIELD_VAR, IncorrectLookupParameters,
+)
+from django.contrib.admin.utils import (
+    get_fields_from_path, lookup_needs_distinct, prepare_lookup_value, quote,
+)
+from django.core.exceptions import (
+    FieldDoesNotExist, ImproperlyConfigured, SuspiciousOperation,
+)
+from django.core.paginator import InvalidPage
+from django.core.urlresolvers import reverse
+from django.db import models
+from django.utils import six
+from django.utils.encoding import force_text
+from django.utils.http import urlencode
+from django.utils.translation import ugettext
 
 # Changelist settings
 ALL_VAR = 'all'
@@ -28,9 +32,6 @@ ERROR_FLAG = 'e'
 
 IGNORED_PARAMS = (
     ALL_VAR, ORDER_VAR, ORDER_TYPE_VAR, SEARCH_VAR, IS_POPUP_VAR, TO_FIELD_VAR)
-
-# Text to display within change-list table cells if the value is blank.
-EMPTY_CHANGELIST_VALUE = ugettext_lazy('(None)')
 
 
 class ChangeList(object):
@@ -199,7 +200,7 @@ class ChangeList(object):
         self.show_full_result_count = self.model_admin.show_full_result_count
         # Admin actions are shown if there is at least one entry
         # or if entries are not counted because show_full_result_count is disabled
-        self.show_admin_actions = self.show_full_result_count or bool(full_result_count)
+        self.show_admin_actions = not self.show_full_result_count or bool(full_result_count)
         self.full_result_count = full_result_count
         self.result_list = result_list
         self.can_show_all = can_show_all
@@ -379,7 +380,7 @@ class ChangeList(object):
             except FieldDoesNotExist:
                 pass
             else:
-                if isinstance(field.rel, models.ManyToOneRel):
+                if isinstance(field.remote_field, models.ManyToOneRel):
                     return True
         return False
 

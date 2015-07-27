@@ -1,32 +1,37 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
 import datetime
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 
-from django import test
-from django import forms
-from django.core import validators
-from django.core import checks
+from django import forms, test
+from django.apps import apps
+from django.core import checks, validators
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction, models, IntegrityError
+from django.db import IntegrityError, connection, models, transaction
 from django.db.models.fields import (
-    AutoField, BigIntegerField, BinaryField, BooleanField, CharField,
-    CommaSeparatedIntegerField, DateField, DateTimeField, DecimalField,
-    EmailField, FilePathField, FloatField, IntegerField, IPAddressField,
-    GenericIPAddressField, NOT_PROVIDED, NullBooleanField, PositiveIntegerField,
+    NOT_PROVIDED, AutoField, BigIntegerField, BinaryField, BooleanField,
+    CharField, CommaSeparatedIntegerField, DateField, DateTimeField,
+    DecimalField, EmailField, FilePathField, FloatField, GenericIPAddressField,
+    IntegerField, IPAddressField, NullBooleanField, PositiveIntegerField,
     PositiveSmallIntegerField, SlugField, SmallIntegerField, TextField,
-    TimeField, URLField)
+    TimeField, URLField,
+)
 from django.db.models.fields.files import FileField, ImageField
-from django.utils import six
+from django.test.utils import requires_tz_support
+from django.utils import six, timezone
+from django.utils.encoding import force_str
 from django.utils.functional import lazy
 
 from .models import (
     Bar, BigD, BigIntegerModel, BigS, BooleanModel, DataModel, DateTimeModel,
     Document, FksToBooleans, FkToChar, FloatModel, Foo, GenericIPAddress,
-    IntegerModel, NullBooleanModel, PositiveIntegerModel, PositiveSmallIntegerModel,
-    Post, PrimaryKeyCharModel, RenamedField, SmallIntegerModel, VerboseNameField,
-    Whiz, WhizIter, WhizIterEmpty)
+    IntegerModel, NullBooleanModel, PositiveIntegerModel,
+    PositiveSmallIntegerModel, Post, PrimaryKeyCharModel, RenamedField,
+    SmallIntegerModel, UnicodeSlugField, VerboseNameField, Whiz, WhizIter,
+    WhizIterEmpty,
+)
 
 
 class BasicFieldTests(test.TestCase):
@@ -75,7 +80,7 @@ class BasicFieldTests(test.TestCase):
 
     def test_field_verbose_name(self):
         m = VerboseNameField
-        for i in range(1, 22):
+        for i in range(1, 24):
             self.assertEqual(m._meta.get_field('field%d' % i).verbose_name,
                              'verbose field%d' % i)
 
@@ -111,7 +116,6 @@ class BasicFieldTests(test.TestCase):
         self.assertIsInstance(field.formfield(choices_form_class=klass), klass)
 
     def test_field_str(self):
-        from django.utils.encoding import force_str
         f = Foo._meta.get_field('a')
         self.assertEqual(force_str(f), "model_fields.Foo.a")
 
@@ -198,11 +202,60 @@ class ForeignKeyTests(test.TestCase):
         self.assertEqual(warnings, expected_warnings)
 
     def test_related_name_converted_to_text(self):
-        rel_name = Bar._meta.get_field('a').rel.related_name
+        rel_name = Bar._meta.get_field('a').remote_field.related_name
         self.assertIsInstance(rel_name, six.text_type)
 
+    def test_abstract_model_pending_operations(self):
+        """
+        Foreign key fields declared on abstract models should not add lazy relations to
+        resolve relationship declared as string. refs #24215
+        """
+        pending_ops_before = list(apps._pending_operations.items())
 
-class DateTimeFieldTests(unittest.TestCase):
+        class AbstractForeignKeyModel(models.Model):
+            fk = models.ForeignKey('missing.FK')
+
+            class Meta:
+                abstract = True
+
+        self.assertIs(AbstractForeignKeyModel._meta.apps, apps)
+        self.assertEqual(
+            pending_ops_before,
+            list(apps._pending_operations.items()),
+            "Pending lookup added for a foreign key on an abstract model"
+        )
+
+
+class ManyToManyFieldTests(test.SimpleTestCase):
+    def test_abstract_model_pending_operations(self):
+        """
+        Many-to-many fields declared on abstract models should not add lazy relations to
+        resolve relationship declared as string. refs #24215
+        """
+        pending_ops_before = list(apps._pending_operations.items())
+
+        class AbstractManyToManyModel(models.Model):
+            fk = models.ForeignKey('missing.FK')
+
+            class Meta:
+                abstract = True
+
+        self.assertIs(AbstractManyToManyModel._meta.apps, apps)
+        self.assertEqual(
+            pending_ops_before,
+            list(apps._pending_operations.items()),
+            "Pending lookup added for a many-to-many field on an abstract model"
+        )
+
+
+class TextFieldTests(test.TestCase):
+    def test_to_python(self):
+        """TextField.to_python() should return a string"""
+        f = models.TextField()
+        self.assertEqual(f.to_python(1), '1')
+
+
+class DateTimeFieldTests(test.TestCase):
     def test_datetimefield_to_python_usecs(self):
         """DateTimeField.to_python should support usecs"""
         f = models.DateTimeField()
@@ -231,8 +284,50 @@ class DateTimeFieldTests(unittest.TestCase):
         self.assertEqual(obj.dt, datetim)
         self.assertEqual(obj.t, tim)
 
+    @test.override_settings(USE_TZ=False)
+    def test_lookup_date_without_use_tz(self):
+        d = datetime.date(2014, 3, 12)
+        dt1 = datetime.datetime(2014, 3, 12, 21, 22, 23, 240000)
+        dt2 = datetime.datetime(2014, 3, 11, 21, 22, 23, 240000)
+        t = datetime.time(21, 22, 23, 240000)
+        m = DateTimeModel.objects.create(d=d, dt=dt1, t=t)
+        # Other model with different datetime.
+        DateTimeModel.objects.create(d=d, dt=dt2, t=t)
+        self.assertEqual(m, DateTimeModel.objects.get(dt__date=d))
 
-class BooleanFieldTests(unittest.TestCase):
+    @requires_tz_support
+    @test.skipUnlessDBFeature('has_zoneinfo_database')
+    @test.override_settings(USE_TZ=True, TIME_ZONE='America/Vancouver')
+    def test_lookup_date_with_use_tz(self):
+        d = datetime.date(2014, 3, 12)
+        # The following is equivalent to UTC 2014-03-12 18:34:23.24000.
+        dt1 = datetime.datetime(
+            2014, 3, 12, 10, 22, 23, 240000,
+            tzinfo=timezone.get_current_timezone()
+        )
+        # The following is equivalent to UTC 2014-03-13 05:34:23.24000.
+        dt2 = datetime.datetime(
+            2014, 3, 12, 21, 22, 23, 240000,
+            tzinfo=timezone.get_current_timezone()
+        )
+        t = datetime.time(21, 22, 23, 240000)
+        m1 = DateTimeModel.objects.create(d=d, dt=dt1, t=t)
+        m2 = DateTimeModel.objects.create(d=d, dt=dt2, t=t)
+        # In Vancouver, we expect both results.
+        self.assertQuerysetEqual(
+            DateTimeModel.objects.filter(dt__date=d),
+            [repr(m1), repr(m2)],
+            ordered=False
+        )
+        with self.settings(TIME_ZONE='UTC'):
+            # But in UTC, the __date only matches one of them.
+            self.assertQuerysetEqual(
+                DateTimeModel.objects.filter(dt__date=d),
+                [repr(m1)]
+            )
+
+
+class BooleanFieldTests(test.TestCase):
     def _test_get_db_prep_lookup(self, f):
         self.assertEqual(f.get_db_prep_lookup('exact', True, connection=connection), [True])
         self.assertEqual(f.get_db_prep_lookup('exact', '1', connection=connection), [True])
@@ -371,8 +466,9 @@ class BooleanFieldTests(unittest.TestCase):
             self.assertFalse(boolean_field.has_default())
             b = BooleanModel()
             self.assertIsNone(b.bfield)
-            with self.assertRaises(IntegrityError):
-                b.save()
+            with transaction.atomic():
+                with self.assertRaises(IntegrityError):
+                    b.save()
         finally:
             boolean_field.default = old_default
 
@@ -381,7 +477,7 @@ class BooleanFieldTests(unittest.TestCase):
         nb.save()           # no error
 
 
-class ChoicesTests(test.TestCase):
+class ChoicesTests(test.SimpleTestCase):
     def test_choices_and_field_display(self):
         """
         Check that get_choices and get_flatchoices interact with
@@ -411,13 +507,6 @@ class ChoicesTests(test.TestCase):
         self.assertEqual(WhizIterEmpty(c=None).c, None)    # Blank value
         self.assertEqual(WhizIterEmpty(c='').c, '')        # Empty value
 
-    def test_charfield_get_choices_with_blank_iterator(self):
-        """
-        Check that get_choices works with an empty Iterator
-        """
-        f = models.CharField(choices=(x for x in []))
-        self.assertEqual(f.get_choices(include_blank=True), [('', '---------')])
-
 
 class SlugFieldTests(test.TestCase):
     def test_slugfield_max_length(self):
@@ -428,8 +517,16 @@ class SlugFieldTests(test.TestCase):
         bs = BigS.objects.get(pk=bs.pk)
         self.assertEqual(bs.s, 'slug' * 50)
 
+    def test_slugfield_unicode_max_length(self):
+        """
+        SlugField with allow_unicode=True should honor max_length.
+        """
+        bs = UnicodeSlugField.objects.create(s='你好你好' * 50)
+        bs = UnicodeSlugField.objects.get(pk=bs.pk)
+        self.assertEqual(bs.s, '你好你好' * 50)
 
-class ValidationTest(test.TestCase):
+
+class ValidationTest(test.SimpleTestCase):
     def test_charfield_raises_error_on_empty_string(self):
         f = models.CharField()
         self.assertRaises(ValidationError, f.clean, "", None)
@@ -477,7 +574,7 @@ class ValidationTest(test.TestCase):
 
     def test_nullable_integerfield_cleans_none_on_null_and_blank_true(self):
         f = models.IntegerField(null=True, blank=True)
-        self.assertEqual(None, f.clean(None, None))
+        self.assertIsNone(f.clean(None, None))
 
     def test_integerfield_raises_error_on_empty_input(self):
         f = models.IntegerField(null=False)
@@ -701,7 +798,7 @@ class GenericIPAddressFieldTests(test.TestCase):
         self.assertEqual(loaded.ip, instance.ip)
 
 
-class PromiseTest(test.TestCase):
+class PromiseTest(test.SimpleTestCase):
     def test_AutoField(self):
         lazy_func = lazy(lambda: 1, int)
         self.assertIsInstance(
@@ -710,10 +807,11 @@ class PromiseTest(test.TestCase):
 
     @unittest.skipIf(six.PY3, "Python 3 has no `long` type.")
     def test_BigIntegerField(self):
-        lazy_func = lazy(lambda: long(9999999999999999999), long)
+        # NOQA: long undefined on PY3
+        lazy_func = lazy(lambda: long(9999999999999999999), long)  # NOQA
         self.assertIsInstance(
             BigIntegerField().get_prep_value(lazy_func()),
-            long)
+            long)  # NOQA
 
     def test_BinaryField(self):
         lazy_func = lazy(lambda: b'', bytes)

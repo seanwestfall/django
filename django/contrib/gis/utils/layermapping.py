@@ -4,18 +4,21 @@
  vector files (e.g. SHP files) to Geographic-enabled Django models.
 
  For more information, please consult the GeoDjango documentation:
-   http://geodjango.org/docs/layermapping.html
+   https://docs.djangoproject.com/en/dev/ref/contrib/gis/layermapping/
 """
 import sys
 from decimal import Decimal, InvalidOperation as DecimalInvalidOperation
-from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
-from django.db import connections, router
+
 from django.contrib.gis.db.models import GeometryField
-from django.contrib.gis.gdal import (CoordTransform, DataSource,
-    GDALException, OGRGeometry, OGRGeomType, SpatialReference)
+from django.contrib.gis.gdal import (
+    CoordTransform, DataSource, GDALException, OGRGeometry, OGRGeomType,
+    SpatialReference,
+)
 from django.contrib.gis.gdal.field import (
-    OFTDate, OFTDateTime, OFTInteger, OFTReal, OFTString, OFTTime)
-from django.db import models, transaction
+    OFTDate, OFTDateTime, OFTInteger, OFTReal, OFTString, OFTTime,
+)
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
+from django.db import connections, models, router, transaction
 from django.utils import six
 from django.utils.encoding import force_text
 
@@ -144,7 +147,7 @@ class LayerMapping(object):
         else:
             raise LayerMapError('Unrecognized transaction mode: %s' % transaction_mode)
 
-    #### Checking routines used during initialization ####
+    # #### Checking routines used during initialization ####
     def check_fid_range(self, fid_range):
         "This checks the `fid_range` keyword."
         if fid_range:
@@ -226,7 +229,7 @@ class LayerMapping(object):
             elif isinstance(model_field, models.ForeignKey):
                 if isinstance(ogr_name, dict):
                     # Is every given related model mapping field in the Layer?
-                    rel_model = model_field.rel.to
+                    rel_model = model_field.remote_field.model
                     for rel_name, ogr_field in ogr_name.items():
                         idx = check_ogr_fld(ogr_field)
                         try:
@@ -331,7 +334,7 @@ class LayerMapping(object):
         else:
             return {fld: kwargs[fld] for fld in self.unique}
 
-    #### Verification routines used in constructing model keyword arguments. ####
+    # #### Verification routines used in constructing model keyword arguments. ####
     def verify_ogr_field(self, ogr_field, model_field):
         """
         Verifies if the OGR Field contents are acceptable to the Django
@@ -441,7 +444,7 @@ class LayerMapping(object):
         # Returning the WKT of the geometry.
         return g.wkt
 
-    #### Other model methods ####
+    # #### Other model methods ####
     def coord_transform(self):
         "Returns the coordinate transformation object."
         SpatialRefSys = self.spatial_backend.spatial_ref_sys()

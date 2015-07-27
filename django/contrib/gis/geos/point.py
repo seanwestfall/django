@@ -1,7 +1,8 @@
 from ctypes import c_uint
+
+from django.contrib.gis.geos import prototypes as capi
 from django.contrib.gis.geos.error import GEOSException
 from django.contrib.gis.geos.geometry import GEOSGeometry
-from django.contrib.gis.geos import prototypes as capi
 from django.utils import six
 from django.utils.six.moves import range
 
@@ -9,6 +10,7 @@ from django.utils.six.moves import range
 class Point(GEOSGeometry):
     _minlength = 2
     _maxlength = 3
+    has_cs = True
 
     def __init__(self, x, y=None, z=None, srid=None):
         """
@@ -128,7 +130,7 @@ class Point(GEOSGeometry):
     y = property(get_y, set_y)
     z = property(get_z, set_z)
 
-    ### Tuple setting and retrieval routines. ###
+    # ### Tuple setting and retrieval routines. ###
     def get_coords(self):
         "Returns a tuple of the point."
         return self._cs.tuple

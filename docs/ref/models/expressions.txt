@@ -17,10 +17,6 @@ Django supports addition, subtraction, multiplication, division, modulo
 arithmetic, and the power operator on query expressions, using Python constants,
 variables, and even other expressions.
 
-.. versionadded:: 1.7
-
-    Support for the power operator ``**`` was added.
-
 Some examples
 =============
 
@@ -29,6 +25,9 @@ Some examples
     Some of the examples rely on functionality that is new in Django 1.8.
 
 .. code-block:: python
+
+    from django.db.models import F, Count
+    from django.db.models.functions import Length
 
     # Find companies that have more employees than chairs.
     Company.objects.filter(num_employees__gt=F('num_chairs'))
@@ -66,6 +65,12 @@ Some examples
 Built-in Expressions
 ====================
 
+.. note::
+
+    These expressions are defined in ``django.db.models.expressions`` and
+    ``django.db.models.aggregates``, but for convenience they're available and
+    usually imported from :mod:`django.db.models`.
+
 ``F()`` expressions
 -------------------
 
@@ -92,6 +97,7 @@ into memory and manipulated it using familiar Python operators, and then saved
 the object back to the database. But instead we could also have done::
 
     from django.db.models import F
+
     reporter = Reporters.objects.get(name='Tintin')
     reporter.stories_filed = F('stories_filed') + 1
     reporter.save()
@@ -130,7 +136,7 @@ the field value on multiple objects - which could be very much faster than
 pulling them all into Python from the database, looping over them, incrementing
 the field value of each one, and saving each one back to the database::
 
-    Reporter.objects.all().update(stories_filed=F('stories_filed) + 1)
+    Reporter.objects.all().update(stories_filed=F('stories_filed') + 1)
 
 ``F()`` therefore can offer performance advantages by:
 
@@ -165,6 +171,27 @@ values, rather than on Python values.
 This is documented in :ref:`using F() expressions in queries
 <using-f-expressions-in-filters>`.
 
+.. _using-f-with-annotations:
+
+Using ``F()`` with annotations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``F()`` can be used to create dynamic fields on your models by combining
+different fields with arithmetic::
+
+    company = Company.objects.annotate(
+        chairs_needed=F('num_employees') - F('num_chairs'))
+
+If the fields that you're combining are of different types you'll need
+to tell Django what kind of field will be returned. Since ``F()`` does not
+directly support ``output_field`` you will need to wrap the expression with
+:class:`ExpressionWrapper`::
+
+    from django.db.models import DateTimeField, ExpressionWrapper, F
+
+    Ticket.objects.annotate(
+        expires=ExpressionWrapper(
+            F('active_at') + F('duration'), output_field=DateTimeField()))
 
 .. _func-expressions:
 
@@ -176,6 +203,8 @@ This is documented in :ref:`using F() expressions in queries
 ``Func()`` expressions are the base type of all expressions that involve
 database functions like ``COALESCE`` and ``LOWER``, or aggregates like ``SUM``.
 They can be used directly::
+
+    from django.db.models import Func, F
 
     queryset.annotate(field_lower=Func(F('field'), function='LOWER'))
 
@@ -191,7 +220,7 @@ extra attribute ``field_lower`` produced, roughly, from the following SQL::
 
     SELECT
         ...
-        LOWER("app_label"."field") as "field_lower"
+        LOWER("db_table"."field") as "field_lower"
 
 See :doc:`database-functions` for a list of built-in database functions.
 
@@ -221,6 +250,10 @@ function will be applied to. The expressions will be converted to strings,
 joined together with ``arg_joiner``, and then interpolated into the ``template``
 as the ``expressions`` placeholder.
 
+Positional arguments can be expressions or Python values. Strings are
+assumed to be column references and will be wrapped in ``F()`` expressions
+while other values will be wrapped in ``Value()`` expressions.
+
 The ``**extra`` kwargs are ``key=value`` pairs that can be interpolated
 into the ``template`` attribute. Note that the keywords ``function`` and
 ``template`` can be used to replace the ``function`` and ``template``
@@ -237,6 +270,8 @@ like ``Sum()`` and ``Count()``, inherit from ``Aggregate()``.
 
 Since ``Aggregate``\s are expressions and wrap expressions, you can represent
 some complex computations::
+
+    from django.db.models import Count
 
     Company.objects.annotate(
         managers_required=(Count('num_employees') / 4) + Count('num_managers'))
@@ -293,6 +328,8 @@ Creating your own aggregate is extremely easy. At a minimum, you need
 to define ``function``, but you can also completely customize the
 SQL that is generated. Here's a brief example::
 
+    from django.db.models import Aggregate
+
     class Count(Aggregate):
         # supports COUNT(distinct field)
         function = 'COUNT'
@@ -332,6 +369,19 @@ instantiating the model field as any arguments relating to data validation
 (``max_length``, ``max_digits``, etc.) will not be enforced on the expression's
 output value.
 
+``ExpressionWrapper()`` expressions
+-----------------------------------
+
+.. class:: ExpressionWrapper(expression, output_field)
+
+.. versionadded:: 1.8
+
+``ExpressionWrapper`` simply surrounds another expression and provides access
+to properties, such as ``output_field``, that may not be available on other
+expressions. ``ExpressionWrapper`` is necessary when using arithmetic on
+``F()`` expressions with different types as described in
+:ref:`using-f-with-annotations`.
+
 Conditional expressions
 -----------------------
 
@@ -354,13 +404,13 @@ Expression API
 
 Query expressions implement the :ref:`query expression API <query-expression>`,
 but also expose a number of extra methods and attributes listed below. All
-query expressions must inherit from ``ExpressionNode()`` or a relevant
+query expressions must inherit from ``Expression()`` or a relevant
 subclass.
 
 When a query expression wraps another expression, it is responsible for
 calling the appropriate methods on the wrapped expression.
 
-.. class:: ExpressionNode
+.. class:: Expression
 
     .. attribute:: contains_aggregate
 
@@ -412,7 +462,7 @@ calling the appropriate methods on the wrapped expression.
               clone.expression = self.expression.relabeled_clone(change_map)
               return clone
 
-    .. method:: convert_value(self, value, connection, context)
+    .. method:: convert_value(self, value, expression, connection, context)
 
         A hook allowing the expression to coerce ``value`` into a more
         appropriate type.
@@ -474,9 +524,9 @@ We'll start by defining the template to be used for SQL generation and
 an ``__init__()`` method to set some attributes::
 
   import copy
-  from django.db.models import ExpressionNode
+  from django.db.models import Expression
 
-  class Coalesce(ExpressionNode):
+  class Coalesce(Expression):
       template = 'COALESCE( %(expressions)s )'
 
       def __init__(self, expressions, output_field, **extra):
@@ -539,11 +589,12 @@ to play nice with other query expressions::
     def get_source_expressions(self):
         return self.expressions
 
-    def set_source_expressions(expressions):
+    def set_source_expressions(self, expressions):
         self.expressions = expressions
 
 Let's see how it works::
 
+    >>> from django.db.models import F, Value, CharField
     >>> qs = Company.objects.annotate(
     ...    tagline=Coalesce([
     ...        F('motto'),

@@ -5,7 +5,7 @@ try:
 except ImportError:
     ContextDecorator = None
 
-from functools import wraps, update_wrapper, WRAPPER_ASSIGNMENTS
+from functools import WRAPPER_ASSIGNMENTS, update_wrapper, wraps
 
 from django.utils import six
 
@@ -144,3 +144,15 @@ if ContextDecorator is None:
                 with self:
                     return func(*args, **kwargs)
             return inner
+
+
+class classproperty(object):
+    def __init__(self, method=None):
+        self.fget = method
+
+    def __get__(self, instance, owner):
+        return self.fget(owner)
+
+    def getter(self, method):
+        self.fget = method
+        return self

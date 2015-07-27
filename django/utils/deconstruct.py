@@ -1,4 +1,3 @@
-from __future__ import absolute_import  # Avoid importing `importlib` from this package.
 from importlib import import_module
 
 from django.utils.version import get_docs_version

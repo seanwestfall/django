@@ -8,7 +8,6 @@ from django.db import router
 from django.utils.six import StringIO
 from django.utils.six.moves import input
 
-
 # The prefix to put on the default database name when creating
 # the test database.
 TEST_DATABASE_PREFIX = 'test_'
@@ -86,6 +85,13 @@ class BaseDatabaseCreation(object):
 
         return test_database_name
 
+    def set_as_test_mirror(self, primary_settings_dict):
+        """
+        Set this database up to be used in testing as a mirror of a primary database
+        whose settings are given
+        """
+        self.connection.settings_dict['NAME'] = primary_settings_dict['NAME']
+
     def serialize_db_to_string(self):
         """
         Serializes all data in the database into a JSON string.
@@ -107,8 +113,8 @@ class BaseDatabaseCreation(object):
         # Make a function to iteratively return every object
         def get_objects():
             for model in serializers.sort_dependencies(app_list):
-                if (not model._meta.proxy and model._meta.managed and
-                        router.allow_migrate(self.connection.alias, model)):
+                if (model._meta.can_migrate(self.connection) and
+                        router.allow_migrate_model(self.connection.alias, model)):
                     queryset = model._default_manager.using(self.connection.alias).order_by(model._meta.pk.name)
                     for obj in queryset.iterator():
                         yield obj
@@ -218,7 +224,7 @@ class BaseDatabaseCreation(object):
         # ourselves. Connect to the previous database (not the test database)
         # to do so, because it's not allowed to delete a database while being
         # connected to it.
-        with self._nodb_connection.cursor() as cursor:
+        with self.connection._nodb_connection.cursor() as cursor:
             # Wait to avoid "database is being accessed by other users" errors.
             time.sleep(1)
             cursor.execute("DROP DATABASE %s"

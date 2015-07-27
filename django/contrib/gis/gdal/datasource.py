@@ -33,20 +33,15 @@
               #  OFTReal returns floats, all else returns string.
               val = field.value
 """
-# ctypes prerequisites.
 from ctypes import byref
 
-# The GDAL C library, OGR exceptions, and the Layer object.
 from django.contrib.gis.gdal.base import GDALBase
 from django.contrib.gis.gdal.driver import Driver
 from django.contrib.gis.gdal.error import GDALException, OGRIndexError
 from django.contrib.gis.gdal.layer import Layer
-
-# Getting the ctypes prototypes for the DataSource.
 from django.contrib.gis.gdal.prototypes import ds as capi
-
-from django.utils.encoding import force_bytes, force_text
 from django.utils import six
+from django.utils.encoding import force_bytes, force_text
 from django.utils.six.moves import range
 
 
@@ -57,7 +52,6 @@ from django.utils.six.moves import range
 class DataSource(GDALBase):
     "Wraps an OGR Data Source object."
 
-    #### Python 'magic' routines ####
     def __init__(self, ds_input, ds_driver=False, write=False, encoding='utf-8'):
         # The write flag.
         if write:

@@ -5,9 +5,11 @@ Tests for stuff in django.utils.datastructures.
 import copy
 
 from django.test import SimpleTestCase
-from django.utils.datastructures import (DictWrapper, ImmutableList,
-    MultiValueDict, MultiValueDictKeyError, OrderedSet)
 from django.utils import six
+from django.utils.datastructures import (
+    DictWrapper, ImmutableList, MultiValueDict, MultiValueDictKeyError,
+    OrderedSet,
+)
 
 
 class OrderedSetTests(SimpleTestCase):
@@ -18,6 +20,14 @@ class OrderedSetTests(SimpleTestCase):
         self.assertFalse(s)
         s.add(1)
         self.assertTrue(s)
+
+    def test_len(self):
+        s = OrderedSet()
+        self.assertEqual(len(s), 0)
+        s.add(1)
+        s.add(2)
+        s.add(2)
+        self.assertEqual(len(s), 2)
 
 
 class MultiValueDictTests(SimpleTestCase):
@@ -30,12 +40,12 @@ class MultiValueDictTests(SimpleTestCase):
         self.assertEqual(d.get('name'), 'Simon')
         self.assertEqual(d.getlist('name'), ['Adrian', 'Simon'])
         self.assertEqual(
-            sorted(list(six.iteritems(d))),
+            sorted(six.iteritems(d)),
             [('name', 'Simon'), ('position', 'Developer')]
         )
 
         self.assertEqual(
-            sorted(list(six.iterlists(d))),
+            sorted(six.iterlists(d)),
             [('name', ['Adrian', 'Simon']), ('position', ['Developer'])]
         )
 
@@ -50,7 +60,7 @@ class MultiValueDictTests(SimpleTestCase):
 
         d.setlist('lastname', ['Holovaty', 'Willison'])
         self.assertEqual(d.getlist('lastname'), ['Holovaty', 'Willison'])
-        self.assertEqual(sorted(list(six.itervalues(d))),
+        self.assertEqual(sorted(six.itervalues(d)),
                          ['Developer', 'Simon', 'Willison'])
 
     def test_appendlist(self):

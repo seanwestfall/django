@@ -2,8 +2,6 @@
 System check framework
 ======================
 
-.. versionadded:: 1.7
-
 The system check framework is a set of static checks for validating Django
 projects. It detects common problems and provides hints for how to fix them.
 The framework is extensible so you can easily add your own checks.
@@ -21,6 +19,7 @@ Django's system checks are organized using the following tags:
 * ``admin``: Checks of any admin site declarations.
 * ``compatibility``: Flagging potential problems with version upgrades.
 * ``security``: Checks security related configuration.
+* ``templates``: Checks template related configuration.
 
 Some checks may be registered with multiple tags.
 
@@ -65,6 +64,8 @@ Models
   ``<M2M field>``. Maximum length is ``<maximum length>`` for database
   ``<alias>``.
 * **models.E020**: The ``<model>.check()`` class method is currently overridden.
+* **models.E021**: ``ordering`` and ``order_with_respect_to`` cannot be used
+  together.
 
 Fields
 ~~~~~~
@@ -184,7 +185,13 @@ that might occur as a result of a version upgrade.
   ``django.contrib.auth.middleware.AuthenticationMiddleware``, and
   ``django.contrib.messages.middleware.MessageMiddleware`` were removed from
   the defaults. If your project needs these middleware then you should
-  configure this setting.
+  configure this setting. *This check was removed in Django 1.9*.
+* **1_8.W001**: The standalone ``TEMPLATE_*`` settings were deprecated in
+  Django 1.8 and the :setting:`TEMPLATES` dictionary takes precedence. You must
+  put the values of the following settings into your defaults ``TEMPLATES``
+  dict: :setting:`TEMPLATE_DIRS`, :setting:`ALLOWED_INCLUDE_ROOTS`,
+  :setting:`TEMPLATE_CONTEXT_PROCESSORS`, :setting:`TEMPLATE_DEBUG`,
+  :setting:`TEMPLATE_LOADERS`, :setting:`TEMPLATE_STRING_IF_INVALID`.
 
 Admin
 -----
@@ -469,6 +476,7 @@ of the :djadmin:`check` command:
   ``'DENY'``. The default is ``'SAMEORIGIN'``, but unless there is a good reason
   for your site to serve other parts of itself in a frame, you should change
   it to ``'DENY'``.
+* **security.W020**: :setting:`ALLOWED_HOSTS` must not be empty in deployment.
 
 Sites
 -----
@@ -491,3 +499,13 @@ If you're using MySQL, the following checks will be performed:
 
 * **mysql.E001**: MySQL does not allow unique ``CharField``\s to have a
   ``max_length`` > 255.
+
+Templates
+---------
+
+The following checks verify that your :setting:`TEMPLATES` setting is correctly
+configured:
+
+* **templates.E001**: You have ``'APP_DIRS': True`` in your
+  :setting:`TEMPLATES` but also specify ``'loaders'`` in ``OPTIONS``. Either
+  remove ``APP_DIRS`` or remove the ``'loaders'`` option.

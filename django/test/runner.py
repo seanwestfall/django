@@ -1,7 +1,7 @@
-from importlib import import_module
 import logging
 import os
 import unittest
+from importlib import import_module
 from unittest import TestSuite, defaultTestLoader
 
 from django.conf import settings
@@ -377,8 +377,8 @@ def setup_databases(verbosity, interactive, keepdb=False, debug_sql=False, **kwa
 
     for alias, mirror_alias in mirrored_aliases.items():
         mirrors.append((alias, connections[alias].settings_dict['NAME']))
-        connections[alias].settings_dict['NAME'] = (
-            connections[mirror_alias].settings_dict['NAME'])
+        connections[alias].creation.set_as_test_mirror(
+            connections[mirror_alias].settings_dict)
 
     if debug_sql:
         for alias in connections:

@@ -3,14 +3,13 @@ from __future__ import unicode_literals
 import os
 from collections import OrderedDict
 
+from django.contrib.staticfiles.finders import get_finders
+from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.files.storage import FileSystemStorage
-from django.core.management.base import CommandError, BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.core.management.color import no_style
 from django.utils.encoding import smart_text
 from django.utils.six.moves import input
-
-from django.contrib.staticfiles.finders import get_finders
-from django.contrib.staticfiles.storage import staticfiles_storage
 
 
 class Command(BaseCommand):
@@ -106,6 +105,14 @@ class Command(BaseCommand):
                 if prefixed_path not in found_files:
                     found_files[prefixed_path] = (storage, path)
                     handler(path, prefixed_path, storage)
+                else:
+                    self.log(
+                        "Found another file with the destination path '%s'. It "
+                        "will be ignored since only the first encountered file "
+                        "is collected. If this is not what you want, make sure "
+                        "every static file has a unique path." % prefixed_path,
+                        level=1,
+                    )
 
         # Here we check if the storage backend has a post_process
         # method and pass it the list of modified files.
@@ -200,6 +207,9 @@ class Command(BaseCommand):
         """
         Deletes the given relative path using the destination storage backend.
         """
+        if not self.storage.exists(path):
+            return
+
         dirs, files = self.storage.listdir(path)
         for f in files:
             fpath = os.path.join(path, f)

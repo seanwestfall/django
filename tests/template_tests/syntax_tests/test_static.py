@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.test import override_settings, SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.utils.six.moves.urllib.parse import urljoin
 
 from ..utils import setup
@@ -7,6 +7,7 @@ from ..utils import setup
 
 @override_settings(MEDIA_URL="/media/", STATIC_URL="/static/")
 class StaticTagTests(SimpleTestCase):
+    libraries = {'static': 'django.templatetags.static'}
 
     @setup({'static-prefixtag01': '{% load static %}{% get_static_prefix %}'})
     def test_static_prefixtag01(self):

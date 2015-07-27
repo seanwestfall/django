@@ -700,7 +700,11 @@ class Classroom(models.Model):
     students = models.ManyToManyField(Student, related_name='classroom')
 
 
-class Ticket23605A(models.Model):
+class Ticket23605AParent(models.Model):
+    pass
+
+
+class Ticket23605A(Ticket23605AParent):
     pass
 
 
@@ -713,3 +717,18 @@ class Ticket23605B(models.Model):
 
 class Ticket23605C(models.Model):
     field_c0 = models.FloatField()
+
+
+# db_table names have capital letters to ensure they are quoted in queries.
+class Individual(models.Model):
+    alive = models.BooleanField()
+
+    class Meta:
+        db_table = 'Individual'
+
+
+class RelatedIndividual(models.Model):
+    related = models.ForeignKey(Individual, related_name='related_individual')
+
+    class Meta:
+        db_table = 'RelatedIndividual'

@@ -1,5 +1,6 @@
 from ctypes import byref, c_int
 from datetime import date, datetime, time
+
 from django.contrib.gis.gdal.base import GDALBase
 from django.contrib.gis.gdal.error import GDALException
 from django.contrib.gis.gdal.prototypes import ds as capi
@@ -16,7 +17,6 @@ class Field(GDALBase):
     from a Feature object.
     """
 
-    #### Python 'magic' routines ####
     def __init__(self, feat, index):
         """
         Initializes on the feature object and the integer index of
@@ -44,14 +44,17 @@ class Field(GDALBase):
         "Returns the string representation of the Field."
         return str(self.value).strip()
 
-    #### Field Methods ####
+    # #### Field Methods ####
     def as_double(self):
         "Retrieves the Field's value as a double (float)."
         return capi.get_field_as_double(self._feat.ptr, self._index)
 
-    def as_int(self):
+    def as_int(self, is_64=False):
         "Retrieves the Field's value as an integer."
-        return capi.get_field_as_integer(self._feat.ptr, self._index)
+        if is_64:
+            return capi.get_field_as_integer64(self._feat.ptr, self._index)
+        else:
+            return capi.get_field_as_integer(self._feat.ptr, self._index)
 
     def as_string(self):
         "Retrieves the Field's value as a string."
@@ -69,7 +72,7 @@ class Field(GDALBase):
         else:
             raise GDALException('Unable to retrieve date & time information from the field.')
 
-    #### Field Properties ####
+    # #### Field Properties ####
     @property
     def name(self):
         "Returns the name of this Field."
@@ -103,9 +106,10 @@ class Field(GDALBase):
         return capi.get_field_width(self.ptr)
 
 
-### The Field sub-classes for each OGR Field type. ###
+# ### The Field sub-classes for each OGR Field type. ###
 class OFTInteger(Field):
     _double = False
+    _bit64 = False
 
     @property
     def value(self):
@@ -115,7 +119,7 @@ class OFTInteger(Field):
             # read as a double and cast as Python int (to prevent overflow).
             return int(self.as_double())
         else:
-            return self.as_int()
+            return self.as_int(self._bit64)
 
     @property
     def type(self):
@@ -185,6 +189,10 @@ class OFTTime(Field):
             return None
 
 
+class OFTInteger64(OFTInteger):
+    _bit64 = True
+
+
 # List fields are also just subclasses
 class OFTIntegerList(Field):
     pass
@@ -201,6 +209,11 @@ class OFTStringList(Field):
 class OFTWideStringList(Field):
     pass
 
+
+class OFTInteger64List(Field):
+    pass
+
+
 # Class mapping dictionary for OFT Types and reverse mapping.
 OGRFieldTypes = {
     0: OFTInteger,
@@ -215,5 +228,8 @@ OGRFieldTypes = {
     9: OFTDate,
     10: OFTTime,
     11: OFTDateTime,
+    # New 64-bit integer types in GDAL 2
+    12: OFTInteger64,
+    13: OFTInteger64List,
 }
 ROGRFieldTypes = {cls: num for num, cls in OGRFieldTypes.items()}

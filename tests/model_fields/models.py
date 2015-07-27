@@ -2,20 +2,22 @@ import os
 import tempfile
 import uuid
 
+from django.contrib.contenttypes.fields import (
+    GenericForeignKey, GenericRelation,
+)
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.storage import FileSystemStorage
+from django.db import models
+from django.db.models.fields.files import ImageField, ImageFieldFile
+from django.db.models.fields.related import (
+    ForeignKey, ForeignObject, ManyToManyField, OneToOneField,
+)
+from django.utils import six
+
 try:
     from PIL import Image
 except ImportError:
     Image = None
-
-from django.core.files.storage import FileSystemStorage
-from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
-from django.contrib.contenttypes.models import ContentType
-from django.db.models.fields.related import (
-    ForeignObject, ForeignKey, ManyToManyField, OneToOneField,
-)
-from django.db import models
-from django.db.models.fields.files import ImageFieldFile, ImageField
-from django.utils import six
 
 
 class Foo(models.Model):
@@ -24,7 +26,7 @@ class Foo(models.Model):
 
 
 def get_foo():
-    return Foo.objects.get(id=1)
+    return Foo.objects.get(id=1).pk
 
 
 class Bar(models.Model):
@@ -82,6 +84,10 @@ class FloatModel(models.Model):
 
 class BigS(models.Model):
     s = models.SlugField(max_length=255)
+
+
+class UnicodeSlugField(models.Model):
+    s = models.SlugField(max_length=255, allow_unicode=True)
 
 
 class SmallIntegerModel(models.Model):
@@ -166,7 +172,7 @@ class VerboseNameField(models.Model):
     field10 = models.FilePathField("verbose field10")
     field11 = models.FloatField("verbose field11")
     # Don't want to depend on Pillow in this test
-    #field_image = models.ImageField("verbose field")
+    # field_image = models.ImageField("verbose field")
     field12 = models.IntegerField("verbose field12")
     field13 = models.GenericIPAddressField("verbose field13", protocol="ipv4")
     field14 = models.NullBooleanField("verbose field14")
@@ -177,6 +183,8 @@ class VerboseNameField(models.Model):
     field19 = models.TextField("verbose field19")
     field20 = models.TimeField("verbose field20")
     field21 = models.URLField("verbose field21")
+    field22 = models.UUIDField("verbose field22")
+    field23 = models.DurationField("verbose field23")
 
 
 class GenericIPAddress(models.Model):
@@ -232,7 +240,7 @@ if Image:
         attr_class = TestImageFieldFile
 
     # Set up a temp directory for file storage.
-    temp_storage_dir = tempfile.mkdtemp(dir=os.environ['DJANGO_TEST_TEMP_DIR'])
+    temp_storage_dir = tempfile.mkdtemp()
     temp_storage = FileSystemStorage(temp_storage_dir)
     temp_upload_to_dir = os.path.join(temp_storage.location, 'tests')
 
@@ -365,3 +373,15 @@ class NullableUUIDModel(models.Model):
 
 class PrimaryKeyUUIDModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+
+
+class RelatedToUUIDModel(models.Model):
+    uuid_fk = models.ForeignKey('PrimaryKeyUUIDModel')
+
+
+class UUIDChild(PrimaryKeyUUIDModel):
+    pass
+
+
+class UUIDGrandchild(UUIDChild):
+    pass

@@ -2,14 +2,15 @@
 from __future__ import unicode_literals
 
 import datetime
-import tempfile
 import os
+import tempfile
 
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.fields import (
-    GenericForeignKey, GenericRelation
+    GenericForeignKey, GenericRelation,
 )
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
@@ -21,6 +22,13 @@ class Section(models.Model):
     in admin views.
     """
     name = models.CharField(max_length=100)
+
+    @property
+    def name_property(self):
+        """
+        A property that simply returns the name. Used to test #24461
+        """
+        return self.name
 
 
 @python_2_unicode_compatible
@@ -304,10 +312,18 @@ class Vodcast(Media):
 class Parent(models.Model):
     name = models.CharField(max_length=128)
 
+    def clean(self):
+        if self.name == '_invalid':
+            raise ValidationError('invalid')
+
 
 class Child(models.Model):
     parent = models.ForeignKey(Parent, editable=False)
     name = models.CharField(max_length=30, blank=True)
+
+    def clean(self):
+        if self.name == '_invalid':
+            raise ValidationError('invalid')
 
 
 @python_2_unicode_compatible
@@ -316,7 +332,7 @@ class EmptyModel(models.Model):
         return "Primary key = %s" % self.id
 
 
-temp_storage = FileSystemStorage(tempfile.mkdtemp(dir=os.environ['DJANGO_TEST_TEMP_DIR']))
+temp_storage = FileSystemStorage(tempfile.mkdtemp())
 UPLOAD_TO = os.path.join(temp_storage.location, 'test_upload')
 
 
@@ -406,10 +422,12 @@ class Category(models.Model):
         return '%s:o%s' % (self.id, self.order)
 
 
+def link_posted_default():
+    return datetime.date.today() - datetime.timedelta(days=7)
+
+
 class Link(models.Model):
-    posted = models.DateField(
-        default=lambda: datetime.date.today() - datetime.timedelta(days=7)
-    )
+    posted = models.DateField(default=link_posted_default)
     url = models.URLField()
     post = models.ForeignKey("Post")
 
@@ -700,6 +718,7 @@ class MainPrepopulated(models.Model):
                  ('option two', 'Option Two')))
     slug1 = models.SlugField(blank=True)
     slug2 = models.SlugField(blank=True)
+    slug3 = models.SlugField(blank=True, allow_unicode=True)
 
 
 class RelatedPrepopulated(models.Model):

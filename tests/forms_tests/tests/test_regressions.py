@@ -10,7 +10,7 @@ from django.test import TestCase, ignore_warnings
 from django.utils import translation
 from django.utils.translation import gettext_lazy, ugettext_lazy
 
-from forms_tests.models import Cheese
+from ..models import Cheese
 
 
 class FormsRegressionsTestCase(TestCase):
@@ -29,16 +29,16 @@ class FormsRegressionsTestCase(TestCase):
         # There were some problems with form translations in #3600
 
         class SomeForm(Form):
-            username = CharField(max_length=10, label=ugettext_lazy('Username'))
+            username = CharField(max_length=10, label=ugettext_lazy('username'))
 
         f = SomeForm()
-        self.assertHTMLEqual(f.as_p(), '<p><label for="id_username">Username:</label> <input id="id_username" type="text" name="username" maxlength="10" /></p>')
+        self.assertHTMLEqual(f.as_p(), '<p><label for="id_username">username:</label> <input id="id_username" type="text" name="username" maxlength="10" /></p>')
 
         # Translations are done at rendering time, so multi-lingual apps can define forms)
         with translation.override('de'):
             self.assertHTMLEqual(f.as_p(), '<p><label for="id_username">Benutzername:</label> <input id="id_username" type="text" name="username" maxlength="10" /></p>')
         with translation.override('pl'):
-            self.assertHTMLEqual(f.as_p(), '<p><label for="id_username">Nazwa u\u017cytkownika:</label> <input id="id_username" type="text" name="username" maxlength="10" /></p>')
+            self.assertHTMLEqual(f.as_p(), '<p><label for="id_username">u\u017cytkownik:</label> <input id="id_username" type="text" name="username" maxlength="10" /></p>')
 
     def test_regression_5216(self):
         # There was some problems with form translations in #5216

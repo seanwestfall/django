@@ -95,11 +95,6 @@ session data be expunged from time to time, the ``cache`` backend is for you.
 If you use the ``cached_db`` session backend, you also need to follow the
 configuration instructions for the `using database-backed sessions`_.
 
-.. versionchanged:: 1.7
-
-    Before version 1.7, the ``cached_db`` backend always used the ``default``
-    cache rather than the :setting:`SESSION_CACHE_ALIAS`.
-
 Using file-based sessions
 -------------------------
 
@@ -210,9 +205,9 @@ You can edit it multiple times.
 
       Example: ``fav_color = request.session.get('fav_color', 'red')``
 
-    .. method:: pop(key)
+    .. method:: pop(key, default=None)
 
-      Example: ``fav_color = request.session.pop('fav_color')``
+      Example: ``fav_color = request.session.pop('fav_color', 'blue')``
 
     .. method:: keys()
 
@@ -226,7 +221,7 @@ You can edit it multiple times.
 
     .. method:: flush()
 
-      Delete the current session data from the session and delete the session
+      Deletes the current session data from the session and deletes the session
       cookie. This is used if you want to ensure that the previous session data
       can't be accessed again from the user's browser (for example, the
       :func:`django.contrib.auth.logout()` function calls it).

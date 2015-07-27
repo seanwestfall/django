@@ -4,11 +4,12 @@ A test spanning all the capabilities of all the serializers.
 This class sets up a model for each model field type
 (except for image types, because of the Pillow dependency).
 """
-from django.db import models
 from django.contrib.contenttypes.fields import (
-    GenericForeignKey, GenericRelation
+    GenericForeignKey, GenericRelation,
 )
 from django.contrib.contenttypes.models import ContentType
+from django.db import models
+
 
 # The following classes are for testing basic data
 # marshalling, including NULL values, where allowed.
@@ -269,6 +270,14 @@ class SmallPKData(models.Model):
 
 # class TimePKData(models.Model):
 #    data = models.TimeField(primary_key=True)
+
+
+class UUIDData(models.Model):
+    data = models.UUIDField(primary_key=True)
+
+
+class FKToUUID(models.Model):
+    data = models.ForeignKey(UUIDData)
 
 
 class ComplexModel(models.Model):
